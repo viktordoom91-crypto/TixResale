@@ -5,15 +5,14 @@ import { prisma } from '@/lib/prisma';
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { status } = await request.json(); // e.g., 'APPROVED', 'CANCELLED'
+    const { status } = await request.json(); 
 
     const order = await prisma.order.update({
       where: { id },
       data: { status },
-      include: { listing: { include: { event: true } } }
+      // 🛠 FIXED: Replaced 'listing' with 'ticketBatch' here!
+      include: { ticketBatch: { include: { event: true } } }
     });
-
-    // NOTE FOR PHASE 5: Right here is where we will trigger Resend to email the PDF receipt!
 
     return NextResponse.json({ success: true, order });
   } catch (error) {
