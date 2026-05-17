@@ -152,7 +152,7 @@ export default async function AdminOrdersPage() {
                             <FileImage className="w-3 h-3" /> View Receipt
                           </a>
                         ) : (order as any).paymentMethod === 'Card2Crypto' ? (
-                          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Crypto Gateway</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Crypto Gateway</p>
                         ) : (
                           <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600">No Receipt</p>
                         )}
