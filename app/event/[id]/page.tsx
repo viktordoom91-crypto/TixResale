@@ -3,7 +3,6 @@ import React, { Suspense } from 'react';
 import { prisma } from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import BuyTicketButton from '../../components/BuyTicketButton';
-import LiveChatWidget from '../../components/LiveChatWidget';
 import { MapPin, Calendar, ShieldCheck, Zap, Ticket, Clock, AlertTriangle, Hash } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -263,7 +262,6 @@ async function EventContent({ id }: { id: string }) {
         </div>
 
       </main>
-      <LiveChatWidget />
     </div>
   );
 }
