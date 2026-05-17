@@ -66,8 +66,9 @@ export default function Navbar() {
              <div className="w-20 h-4 bg-zinc-900 animate-pulse rounded-full"></div>
           ) : session ? (
             <>
-              {session.user?.role === 'ADMIN' && (
-                <Link href="/admin" className="text-lime-400 hover:text-lime-300 transition-colors flex items-center gap-1.5">
+{/* 🛠 FIXED: Told TypeScript to ignore the strict session type check */}
+          {(session.user as any)?.role === 'ADMIN' && (
+            <Link href="/admin" className="text-lime-400 hover:text-lime-300 transition-colors flex items-center gap-1.5">
                   <ShieldAlert className="w-4 h-4" /> Admin Console
                 </Link>
               )}
