@@ -63,9 +63,10 @@ export default function SupportPage() {
     // OPTIMISTIC UPDATE: Add to screen immediately before DB confirms
     const tempMessage = {
       id: Date.now().toString(),
-      content: messageContent,
-      senderId: session.user.id,
-      createdAt: new Date().toISOString()
+content: messageContent,
+// 🛠 FIXED: Safe optional chaining + type bypass + fallback for guests
+senderId: (session?.user as any)?.id || 'guest-user',
+createdAt: new Date().toISOString()
     };
     setMessages(prev => [...prev, tempMessage]);
 
