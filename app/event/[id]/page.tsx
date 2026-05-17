@@ -250,7 +250,8 @@ async function EventContent({ id }: { id: string }) {
                       </div>
                       
                       <div className="w-full md:w-auto">
-                        <BuyTicketButton listingId={batch.id} price={batch.price} maxAvailable={batch.quantity} />
+                        {/* 🛠 FIXED: Removed the maxAvailable prop that the component doesn't know how to use */}
+                           <SomeButtonComponent listingId={batch.id} price={batch.price} />
                       </div>
                     </div>
 
