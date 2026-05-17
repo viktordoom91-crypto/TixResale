@@ -96,8 +96,8 @@ export default async function AdminOrdersPage() {
                   const { event } = ticketBatch;
 
                   const isPending = order.status === 'PENDING';
-                  const isVerifying = order.status === 'VERIFYING' || order.status === 'ESCROW_REVIEW';
-                  const isApproved = order.status === 'APPROVED' || order.status === 'PAID';
+                  const isVerifying = order.status === 'VERIFYING';
+                  const isApproved = order.status === 'APPROVED';
                   const isCancelled = order.status === 'CANCELLED';
 
                   return (
