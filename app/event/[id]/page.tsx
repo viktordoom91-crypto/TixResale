@@ -251,7 +251,8 @@ async function EventContent({ id }: { id: string }) {
                       
                       <div className="w-full md:w-auto">
                         {/* 🛠 FIXED: Removed the maxAvailable prop that the component doesn't know how to use */}
-                           <SomeButtonComponent listingId={batch.id} price={batch.price} />
+                           {/* 🛠 FIXED: Using your real component! */}
+                          <BuyTicketButton listingId={batch.id} price={batch.price} />
                       </div>
                     </div>
 
