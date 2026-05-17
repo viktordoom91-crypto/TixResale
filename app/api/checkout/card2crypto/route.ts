@@ -8,7 +8,8 @@ export async function POST(request: Request) {
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { user: true }
+      // 🛠 FIXED: Included ticketBatch so we can access the price
+      include: { user: true, ticketBatch: true }
     });
 
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
     const myPolygonWallet = process.env.MASTER_POLYGON_WALLET; 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-    // 🛠 THE FIX: Safety check for missing .env variables
+    // Safety check for missing .env variables
     if (!myPolygonWallet || !baseUrl) {
       console.error("CRITICAL: MASTER_POLYGON_WALLET or NEXT_PUBLIC_BASE_URL is missing in .env");
       return NextResponse.json({ error: 'Payment gateway configuration missing.' }, { status: 500 });
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     
     const walletRes = await fetch(walletReqUrl);
     
-    // 🛠 THE FIX: Catch HTML error pages from Card2Crypto before trying to parse JSON
+    // Catch HTML error pages from Card2Crypto before trying to parse JSON
     const contentType = walletRes.headers.get("content-type");
     if (!walletRes.ok || !contentType || !contentType.includes("application/json")) {
        const errorText = await walletRes.text();
@@ -47,8 +48,9 @@ export async function POST(request: Request) {
     // STEP 2: Generate the Smart Redirect URL
     const checkoutUrl = `https://pay.card2crypto.org/pay.php?` + new URLSearchParams({
       address: walletData.address_in,
-      amount: order.totalAmount.toString(),
-      email: order.user.email,
+      // 🛠 FIXED: Pointed to ticketBatch.price and made email safe for guest checkouts
+      amount: order.ticketBatch.price.toString(),
+      email: order.user?.email || 'guest@tixresale.com',
       currency: 'USD',
       domain: 'pay.card2crypto.org'
     }).toString();
