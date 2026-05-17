@@ -144,7 +144,7 @@ export default function Navbar() {
                 <div className="w-20 h-4 bg-zinc-900 animate-pulse rounded-full"></div>
               ) : session ? (
                 <>
-                  {session.user?.role === 'ADMIN' && (
+                 {(session.user as any)?.role === 'ADMIN' && (
                     <Link href="/admin" onClick={() => setIsMobileMenuOpen(false)} className="text-lime-400 hover:text-lime-300 transition-colors flex items-center gap-3">
                       <ShieldAlert className="w-5 h-5" /> Admin Console
                     </Link>
