@@ -1,0 +1,142 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  email         String         @unique
+  password      String         
+  role          Role           @default(USER)
+  orders        Order[]
+  conversations Conversation[] 
+  messages      Message[]      
+  createdAt     DateTime       @default(now())
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model SellerProfile {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  avatarUrl     String?
+  isBot         Boolean       @default(true)
+  ticketBatches TicketBatch[] // 🛠 FIX: Changed from listings
+  createdAt     DateTime      @default(now())
+}
+
+model Event {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  title         String
+  description   String
+  date          DateTime
+  city          String
+  country       String
+  basePrice     Float
+  imageUrl      String?
+  isManual      Boolean       @default(false)
+  isFeatured    Boolean       @default(false) 
+  ticketBatches TicketBatch[] // 🛠 FIX: Changed from listings
+  createdAt     DateTime      @default(now())
+}
+
+model TicketBatch {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  eventId       String        @db.ObjectId
+  sellerId      String        @db.ObjectId
+  price         Float
+  quantity      Int           
+  ticketsSold   Int           @default(0) 
+
+  event         Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  seller        SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  orders        Order[]
+}
+
+model Order {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  ticketBatchId String      @db.ObjectId // 🛠 FIX: Changed from listingId
+  ticketBatch   TicketBatch @relation(fields: [ticketBatchId], references: [id]) // 🛠 FIX: Changed from listing
+  userId        String?     @db.ObjectId
+  user          User?       @relation(fields: [userId], references: [id])
+  status        OrderStatus @default(PENDING)
+  receiptUrl    String?
+  expiresAt     DateTime
+  createdAt     DateTime    @default(now())
+}
+
+enum OrderStatus {
+  PENDING
+  VERIFYING
+  APPROVED
+  CANCELLED
+}
+
+model SystemSettings {
+  id                        String   @id @default(auto()) @map("_id") @db.ObjectId
+  // Legacy fields (kept so old code doesn't crash during migration)
+  bankName                  String
+  accountName               String
+  accountNumber             String
+  instructions              String
+  manualPaymentInstructions String?  
+  
+  allowManualPayments       Boolean  @default(true) 
+  vatRate                   Float    @default(12.4) // 🛠 NEW: VAT Configuration
+  
+  paymentMethods            PaymentMethod[] // 🛠 NEW: Dynamic Array of payment options
+
+  updatedAt                 DateTime @updatedAt
+}
+// --- NEW MODELS FOR LIVE SUPPORT ---
+
+model Conversation {
+  id        String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String      @db.ObjectId
+  user      User        @relation(fields: [userId], references: [id])
+  status    ChatStatus  @default(OPEN)
+  messages  Message[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model Message {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  conversationId String       @db.ObjectId
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  senderId       String       @db.ObjectId 
+  sender         User         @relation(fields: [senderId], references: [id])
+  content        String
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+}
+
+model PaymentMethod {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  type          String   // e.g., "Bank Transfer", "Crypto", "PayPal"
+  accountName   String
+  accountNumber String
+  receiverName  String
+  instructions  String
+  timerMinutes  Int      @default(15) // Dynamic timer per payment method
+  isActive      Boolean  @default(true)
+  
+  settingsId    String   @db.ObjectId
+  settings      SystemSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+}
+
+enum ChatStatus {
+  OPEN
+  RESOLVED
+  CLOSED
+}
