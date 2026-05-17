@@ -1,16 +1,16 @@
-// app/api/orders/[orderId]/route.ts
+// app/api/admin/orders/[id]/route.ts
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ orderId: string }> }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    // 🛠 FIXED: Changed 'id' to 'orderId' to match the [orderId] folder name
-    const { orderId } = await params;
+    const { id } = await params;
     const { status } = await request.json(); 
 
     const order = await prisma.order.update({
-      where: { id: orderId }, // 🛠 FIXED: Query using orderId
+      where: { id },
       data: { status },
+      // 🛠 FIXED: Replaced 'listing' with 'ticketBatch' here!
       include: { ticketBatch: { include: { event: true } } }
     });
 
