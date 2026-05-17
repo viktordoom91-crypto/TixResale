@@ -15,13 +15,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 1. Mark the order as PAID automatically!
+    // 1. Mark the order as APPROVED automatically!
     await prisma.order.update({
       where: { id: orderId },
       data: { 
-        status: 'PAID',
-        paymentMethod: 'Card2Crypto',
-        transactionHash: txidOut // Save the blockchain receipt
+        // 🛠 FIXED: Swapped to 'APPROVED' and mapped the transaction hash to 'receiptUrl'
+        status: 'APPROVED',
+        receiptUrl: txidOut ? `https://polygonscan.com/tx/${txidOut}` : undefined 
       }
     });
 
