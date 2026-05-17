@@ -1,44 +1,49 @@
-// app/api/admin/approve-order/route.ts
+// app/admin/approve-order/route.ts
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getToken } from 'next-auth/jwt';
 
 export async function POST(request: Request) {
+  const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+  
+  // Verify Admin Security
+  if (!token || token.role !== 'ADMIN') {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { orderId, action } = await request.json(); 
+
+  if (!orderId || !action) {
+    return NextResponse.json({ error: "Missing data" }, { status: 400 });
+  }
+
   try {
-    const { orderId, action } = await request.json(); // action can be 'APPROVE' or 'REJECT'
-
     const order = await prisma.order.findUnique({ where: { id: orderId } });
-
-    if (!order || order.status !== 'VERIFYING') {
-      return NextResponse.json({ error: 'Invalid order or order not ready for verification' }, { status: 400 });
-    }
+    if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
     if (action === 'APPROVE') {
-      // Approve the transfer, finalize the sale
       await prisma.order.update({
         where: { id: orderId },
         data: { status: 'APPROVED' },
       });
-      return NextResponse.json({ success: true, message: 'Ticket issued successfully.' });
-    } 
-    
-    if (action === 'REJECT') {
-      // Transfer failed or was fake. Cancel order, put ticket back on market.
+      
+    } else if (action === 'REJECT') {
+      // 🛠 THE FIX: Update TicketBatch instead of Listing!
       await prisma.$transaction([
         prisma.order.update({
           where: { id: orderId },
           data: { status: 'CANCELLED' },
         }),
-        prisma.listing.update({
-          where: { id: order.listingId },
-          data: { isAvailable: true },
+        prisma.ticketBatch.update({
+          where: { id: order.ticketBatchId }, 
+          data: { ticketsSold: { decrement: 1 } }, 
         })
       ]);
-      return NextResponse.json({ success: true, message: 'Fraudulent transfer rejected. Ticket released.' });
     }
 
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Approval Error:', error);
-    return NextResponse.json({ error: 'Failed to process order' }, { status: 500 });
+    console.error("Order update error:", error);
+    return NextResponse.json({ error: "Failed to update order" }, { status: 500 });
   }
 }
