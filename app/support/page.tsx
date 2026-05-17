@@ -130,8 +130,8 @@ createdAt: new Date().toISOString()
               </div>
             ) : (
               messages.map((msg) => {
-                const isMe = msg.senderId === session?.user?.id;
-                return (
+// 🛠 FIXED: Safely bypass the NextAuth session user restriction for UI sorting
+const isMe = msg.senderId === ((session?.user as any)?.id || 'guest-user');                return (
                   <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[75%] rounded-2xl px-5 py-3 shadow-md ${isMe ? 'bg-lime-400 text-black rounded-br-sm' : 'bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-bl-sm'}`}>
                       <p className={`text-sm ${isMe ? 'font-bold' : 'font-medium'}`}>{msg.content}</p>
