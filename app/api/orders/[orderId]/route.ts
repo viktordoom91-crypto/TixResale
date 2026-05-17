@@ -1,20 +1,18 @@
-// app/api/admin/orders/[id]/route.ts
+// app/api/orders/[orderId]/route.ts
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ orderId: string }> }) {
   try {
-    const { id } = await params;
-    const { status } = await request.json(); // e.g., 'APPROVED', 'CANCELLED'
+    // 🛠 FIXED: Changed 'id' to 'orderId' to match the [orderId] folder name
+    const { orderId } = await params;
+    const { status } = await request.json(); 
 
     const order = await prisma.order.update({
-      where: { id },
+      where: { id: orderId }, // 🛠 FIXED: Query using orderId
       data: { status },
-      // 🛠 FIXED: Changed 'listing' to 'ticketBatch' to match your new schema
       include: { ticketBatch: { include: { event: true } } }
     });
-
-    // NOTE FOR PHASE 5: Right here is where we will trigger Resend to email the PDF receipt!
 
     return NextResponse.json({ success: true, order });
   } catch (error) {
