@@ -36,8 +36,8 @@ export async function POST(request: Request) {
           data: { status: 'CANCELLED' },
         }),
         prisma.ticketBatch.update({
-          where: { id: order.ticketBatchId }, // Changed from listingId
-          data: { ticketsSold: { decrement: 1 } }, // Puts the ticket back in the available pool
+          where: { id: order.ticketBatchId }, 
+          data: { ticketsSold: { decrement: 1 } }, 
         })
       ]);
     }
