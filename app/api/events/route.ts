@@ -1,4 +1,4 @@
-// app/api/events/route.ts
+here// app/api/events/route.ts
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { faker } from '@faker-js/faker';
@@ -9,17 +9,18 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const requestedCity = searchParams.get('city');
   const requestedKeyword = searchParams.get('keyword');
-  const requestedCategory = searchParams.get('category'); // 🛠 NEW: Global Category Hook
+  const requestedCategory = searchParams.get('category');
 
-  const city = requestedCity || request.headers.get('x-vercel-ip-city') || 'London';
+  // 🛠 FIXED: Default city changed from London to Nashville
+  const city = requestedCity || request.headers.get('x-vercel-ip-city') || 'Nashville';
 
+  // Run the external sync in the background so it doesn't block the user's initial load
   setTimeout(() => {
     syncExternalEvents(city, requestedKeyword, requestedCategory).catch(console.error);
   }, 1000);
 
   let andConditions: any[] = [];
 
-  // 1. Keyword search checks title, desc, and city globally
   if (requestedKeyword) {
     andConditions.push({
       OR: [
@@ -28,13 +29,10 @@ export async function GET(request: Request) {
         { city: { contains: requestedKeyword, mode: 'insensitive' } } 
       ]
     });
-  } 
-  // 2. If NO keyword AND NO specific category, restrict to the local city
-  else if (!requestedCategory || requestedCategory === 'All') {
+  } else if (!requestedCategory || requestedCategory === 'All') {
     andConditions.push({ city: { equals: city, mode: 'insensitive' } });
   }
 
-  // 3. Category search filters globally across the database
   if (requestedCategory && requestedCategory !== 'All') {
     let mappedCat = requestedCategory;
     if (requestedCategory === 'Concerts') mappedCat = 'Music';
@@ -50,7 +48,7 @@ export async function GET(request: Request) {
 
   const dbQuery = andConditions.length > 0 ? { AND: andConditions } : {};
 
-  // Create a Readable Stream to push data in chunks
+  // 🛠 UI PAGINATION IS HANDLED HERE: Streams chunks of 12 events at a time
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -114,18 +112,19 @@ async function syncExternalEvents(targetCity: string, keyword: string | null, ca
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&size=10&sort=date,asc`;
+    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&sort=date,asc`;
     
-    // 🛠 THE FIX: If category is selected, search Ticketmaster Globally!
+    // 🛠 FIXED: Removed the hardcoded size=10 limit. 
+    // If a keyword is provided, we grab up to 100 events to ensure we get the full tour.
     if (keyword) {
-      tmUrl += `&keyword=${encodeURIComponent(keyword)}`;
+      tmUrl += `&keyword=${encodeURIComponent(keyword)}&size=100`;
     } else if (category && category !== 'All') {
       let tmCat = category;
       if (category === 'Concerts') tmCat = 'Music';
       if (category === 'Theater') tmCat = 'Arts & Theatre';
-      tmUrl += `&classificationName=${encodeURIComponent(tmCat)}`; // Global fetch!
+      tmUrl += `&classificationName=${encodeURIComponent(tmCat)}&size=50`; 
     } else {
-      tmUrl += `&city=${encodeURIComponent(targetCity)}`;
+      tmUrl += `&city=${encodeURIComponent(targetCity)}&size=40`;
     }
 
     const response = await fetch(tmUrl, { signal: controller.signal });
@@ -146,7 +145,9 @@ async function syncExternalEvents(targetCity: string, keyword: string | null, ca
       const eventDateString = extEvent.dates?.start?.dateTime || extEvent.dates?.start?.localDate;
       const date = eventDateString ? new Date(eventDateString) : new Date(Date.now() + 86400000 * 7);
       const imageUrl = extEvent.images?.[0]?.url || "https://images.unsplash.com/photo-1540575861501-7cf05a4b125a?q=80&w=1000";
-      const basePrice = extEvent.priceRanges?.[0]?.min ? (extEvent.priceRanges[0].min * 1000) : 15000; 
+      
+      // 🛠 FIXED: Stripped out NGN calculation (* 1000) and updated fallback price to $50
+      const basePrice = extEvent.priceRanges?.[0]?.min ? Math.round(extEvent.priceRanges[0].min) : 50; 
 
       const existingEvent = await prisma.event.findFirst({
         where: { title, city: actualCity }
@@ -190,4 +191,4 @@ async function syncExternalEvents(targetCity: string, keyword: string | null, ca
   } catch (error) {
     console.error("Ticketmaster Sync Suppressed:", error instanceof Error ? error.message : "Timeout");
   }
-}
+            }
