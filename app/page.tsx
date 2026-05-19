@@ -625,7 +625,6 @@ function HomeContent() {
         <div className="relative border border-zinc-800 bg-black overflow-hidden mt-8 rounded-[3rem] shadow-2xl py-12">
           <div className="flex flex-col justify-center pointer-events-none select-none overflow-hidden bg-black">
             {[...Array(6)].map((_, i) => (
-              {/* 🛠 FIXED: Reduced font size from text-[8rem] down to text-[3rem] md:text-[5rem] */}
               <div key={i} className="whitespace-nowrap flex text-[3rem] md:text-[5rem] font-heavy leading-[0.85] tracking-tight">
                 <span className={`${i % 2 === 0 ? "animate-marquee text-glow" : "animate-marquee-slow text-dim"}`}>
                   TIX RESALE TIX RESALE TIX RESALE TIX RESALE TIX RESALE TIX RESALE TIX RESALE TIX RESALE
