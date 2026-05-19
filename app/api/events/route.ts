@@ -1,4 +1,4 @@
-here// app/api/events/route.ts
+// app/api/events/route.ts
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { faker } from '@faker-js/faker';
