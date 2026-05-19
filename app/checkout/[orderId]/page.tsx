@@ -1,10 +1,11 @@
-// app/checkout/[orderId]/page.tsx
+here// app/checkout/[orderId]/page.tsx
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, ShieldCheck, MapPin, Calendar, Copy, Ticket, CheckCircle2, AlertTriangle, ArrowLeft, Lock, Minus, Plus, UploadCloud, FileImage, CreditCard, MessageSquareWarning, ArrowRight, Check, MessageCircle, AtSign, RefreshCw } from 'lucide-react';
+// 🛠 FIXED: Removed WhatsApp/X icons and added Mail icon
+import { Clock, ShieldCheck, MapPin, Calendar, Copy, Ticket, CheckCircle2, AlertTriangle, ArrowLeft, Lock, Minus, Plus, UploadCloud, FileImage, CreditCard, MessageSquareWarning, ArrowRight, Check, Mail, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 
 const SECTIONS = ['VIP Standing', 'Main Floor', 'Balcony Unreserved', 'Backstage Pass', 'Lower Tier', 'Golden Circle'];
@@ -19,7 +20,6 @@ export default function CheckoutPage() {
   const params = useParams();
   const router = useRouter();
   const orderId = params.orderId as string;
-
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -28,11 +28,11 @@ export default function CheckoutPage() {
   // --- PAGINATION & FLOW STATE ---
   const [step, setStep] = useState(1);
   const [selectedGateway, setSelectedGateway] = useState<'CARD' | 'ESCROW' | null>(null);
-  const [escrowNotified, setEscrowNotified] = useState(false); 
+  const [escrowNotified, setEscrowNotified] = useState(false);
   
-  // 🛠 NEW: 5-Minute Escrow Wait Timer State
+  // 5-Minute Escrow Wait Timer State
   const [escrowWaitTime, setEscrowWaitTime] = useState<number | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0); // Used to instantly reload new bank details
+  const [refreshKey, setRefreshKey] = useState(0); 
   const [isRefreshing, setIsRefreshing] = useState(false);
   
   const [activeMethodIndex, setActiveMethodIndex] = useState(0);
@@ -57,7 +57,6 @@ export default function CheckoutPage() {
         setMaxAvailable(json.order.ticketBatch.quantity);
       }
 
-      // Only set expiration timer on the first load
       if (!isSilentRefresh) {
         const diff = new Date(json.order.expiresAt).getTime() - Date.now();
         setTimeLeft(Math.max(0, Math.floor(diff / 1000)));
@@ -70,12 +69,10 @@ export default function CheckoutPage() {
     }
   }, [orderId, router]);
 
-  // Initial Fetch & Refresh Fetch
   useEffect(() => {
     if (orderId) fetchOrder(refreshKey > 0);
   }, [orderId, fetchOrder, refreshKey]);
 
-  // Reservation Timer
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0) return;
     const interval = setInterval(() => {
@@ -90,7 +87,6 @@ export default function CheckoutPage() {
     return () => clearInterval(interval);
   }, [timeLeft]);
 
-  // 🛠 NEW: Escrow 5-Minute Wait Timer
   useEffect(() => {
     if (escrowWaitTime === null || escrowWaitTime <= 0) return;
     const interval = setInterval(() => {
@@ -165,7 +161,6 @@ export default function CheckoutPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: orderId, receiptUrl: cloudinaryData.secure_url }),
       });
-
       if (confirmRes.ok) {
         alert("Payment submitted! The admin is verifying your receipt.");
         router.push('/');
@@ -181,7 +176,6 @@ export default function CheckoutPage() {
   };
 
   if (loading) return <div className="h-screen bg-zinc-950 flex items-center justify-center font-black text-2xl animate-pulse text-lime-400 uppercase tracking-widest">Securing Checkout...</div>;
-
   if (!data || data.error || !data.order) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-zinc-950 text-white">
@@ -193,18 +187,17 @@ export default function CheckoutPage() {
   }
 
   const { order, systemSettings } = data;
-  const { ticketBatch } = order; 
+  const { ticketBatch } = order;
   const { event } = ticketBatch;
 
   const paymentMethods = systemSettings?.paymentMethods || [];
   const activeMethod = paymentMethods[activeMethodIndex] || null;
-
   const mins = Math.floor((timeLeft || 0) / 60);
   const secs = (timeLeft || 0) % 60;
   const isExpiring = (timeLeft || 0) < 300; 
   const isExpired = timeLeft === 0;
 
-  const currentQuantity = Math.min(selectedQuantity, maxAvailable); 
+  const currentQuantity = Math.min(selectedQuantity, maxAvailable);
   const subtotal = ticketBatch.price * currentQuantity;
   const vatRate = systemSettings?.vatRate || 0;
   const vatAmount = (subtotal * vatRate) / 100;
@@ -217,9 +210,9 @@ export default function CheckoutPage() {
   const venueParts = event.description?.split(' at ') || [];
   const venueName = venueParts.length > 1 ? venueParts[1] : event.city;
   const seatInfo = getSeatInfo(ticketBatch.id);
-
-  // WhatsApp connection link
-  const WHATSAPP_URL = `https://wa.me/2349062046678?text=${encodeURIComponent(`Hi Salex Escrow, I am ready to make a manual transfer for Order ID: ${order.id}`)}`;
+  
+  // 🛠 FIXED: Replaced WhatsApp with Email Link
+  const EMAIL_URL = `mailto:SeatExchangeInfo@gmail.com?subject=${encodeURIComponent(`Escrow Verification: Order ID ${order.id}`)}&body=${encodeURIComponent(`Hi Salex Escrow,\n\nI am ready to make a manual transfer for Order ID: ${order.id}.\n\n`)}`;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-300 font-sans pb-24 selection:bg-lime-500 selection:text-black">
@@ -302,12 +295,11 @@ export default function CheckoutPage() {
               <p className="text-xs text-zinc-500 font-medium mb-4 leading-relaxed">
                 If you encounter any issues during payment or need your receipt verified manually, our Escrow Agents are live.
               </p>
+              
+              {/* 🛠 FIXED: Replaced X and WhatsApp with a single full-width Email Support button */}
               <div className="flex gap-3">
-                <a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="flex-1 bg-[#25D366]/10 text-[#25D366] border border-[#25D366]/20 py-2 rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest hover:bg-[#25D366]/20 transition">
-                  <MessageCircle className="w-4 h-4" /> WhatsApp
-                </a>
-                <a href="#" target="_blank" rel="noreferrer" className="flex-1 bg-zinc-900 text-zinc-300 border border-zinc-800 py-2 rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest hover:bg-zinc-800 transition">
-                  <AtSign className="w-4 h-4" /> X (Twitter)
+                <a href={EMAIL_URL} className="flex-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 py-3 rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest hover:bg-blue-500/20 transition">
+                  <Mail className="w-4 h-4" /> Email Escrow Support
                 </a>
               </div>
             </div>
@@ -353,7 +345,6 @@ export default function CheckoutPage() {
               <div className="bg-zinc-900 rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden relative min-h-[400px]">
                 
                 <AnimatePresence mode="wait">
-                  
                   {/* STEP 1: CONFIRM QUANTITY */}
                   {step === 1 && (
                     <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-8">
@@ -444,8 +435,10 @@ export default function CheckoutPage() {
                         <div className="m-8 p-6 bg-orange-500/10 border border-orange-500/30 rounded-2xl text-center">
                           <MessageSquareWarning className="w-8 h-8 text-orange-400 mx-auto mb-3" />
                           <h3 className="text-white font-black uppercase tracking-tight mb-2">Admin Review Ongoing</h3>
+                          
+                          {/* 🛠 FIXED: Updated warning text to point to Email */}
                           <p className="text-zinc-400 font-medium text-xs mb-4 max-w-sm mx-auto">
-                            The admin has flagged your payment. Please use the WhatsApp button on the left to resolve the issue with Escrow immediately.
+                            The admin has flagged your payment. Please use the Email button on the left to resolve the issue with Escrow immediately.
                           </p>
                         </div>
                       )}
@@ -465,7 +458,7 @@ export default function CheckoutPage() {
                         </div>
                       ) : (
                         <div>
-                          {/* 🛠 NEW: INTERACTIVE ESCROW WAIT GATE */}
+                          {/* INTERACTIVE ESCROW WAIT GATE */}
                           {!escrowNotified ? (
                             <div className="p-12 text-center bg-zinc-950/50">
                               <div className="w-20 h-20 bg-lime-400/10 text-lime-400 rounded-full flex items-center justify-center mx-auto mb-6 border border-lime-400/20 shadow-[0_0_20px_rgba(57,255,20,0.1)]">
@@ -475,27 +468,28 @@ export default function CheckoutPage() {
                               <p className="text-zinc-400 font-medium text-sm mb-10 max-w-md mx-auto leading-relaxed">
                                 To ensure maximum security, manual transfers require authorization from an Escrow Agent. Click below to notify them and receive your secure payment details.
                               </p>
+                              
+                              {/* 🛠 FIXED: Replaced WhatsApp action with Email Action */}
                               <button
                                 onClick={() => {
-                                  window.open(WHATSAPP_URL, '_blank');
+                                  window.location.href = EMAIL_URL;
                                   setEscrowNotified(true);
                                   setEscrowWaitTime(300); // Start 5-minute wait timer
                                 }}
                                 className="w-full bg-lime-400 text-black py-5 rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-lime-300 transition shadow-[0_0_20px_rgba(57,255,20,0.2)] flex items-center justify-center gap-3"
-                              >
-                                <MessageCircle className="w-5 h-5" /> Notify Escrow Agent
+                               >
+                                <Mail className="w-5 h-5" /> Email Escrow Agent
                               </button>
                             </div>
                           ) : (
                             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                              
-                              {/* 🛠 NEW: 5 MINUTE DRAWDOWN TIMER */}
+                              {/* 5 MINUTE DRAWDOWN TIMER */}
                               {escrowWaitTime !== null && escrowWaitTime > 0 && (
                                 <div className="m-8 bg-orange-500/10 border border-orange-500/30 p-6 rounded-2xl text-center">
                                   <Clock className="w-8 h-8 text-orange-400 mx-auto mb-3 animate-pulse" />
                                   <h3 className="text-white font-black uppercase tracking-tight mb-2">Awaiting Escrow Assignment</h3>
                                   <p className="text-zinc-400 font-medium text-xs mb-4 max-w-sm mx-auto">
-                                    Please wait up to 5 minutes for the Escrow Agent to verify availability and assign a secure payment account. 
+                                    Please wait up to 5 minutes for the Escrow Agent to verify availability and assign a secure payment account.
                                   </p>
                                   <div className="text-4xl font-mono font-black text-orange-400 tracking-widest mb-4 drop-shadow-[0_0_10px_rgba(249,115,22,0.5)]">
                                     {Math.floor(escrowWaitTime / 60).toString().padStart(2, '0')}:{(escrowWaitTime % 60).toString().padStart(2, '0')}
@@ -523,7 +517,7 @@ export default function CheckoutPage() {
                               )}
                               <div className="p-8 bg-zinc-950 space-y-4">
                                 
-                                {/* 🛠 NEW: Refresh Button for Admin Updates */}
+                                {/* Refresh Button for Admin Updates */}
                                 <div className="flex justify-end mb-2">
                                   <button 
                                     onClick={() => {
@@ -532,7 +526,7 @@ export default function CheckoutPage() {
                                     }}
                                     disabled={isRefreshing}
                                     className="flex items-center gap-2 text-xs font-black text-lime-400 uppercase tracking-widest hover:text-white transition disabled:opacity-50"
-                                  >
+                                   >
                                     <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} /> Refresh Details
                                   </button>
                                 </div>
@@ -560,7 +554,7 @@ export default function CheckoutPage() {
                                 <div className="pt-6 mt-6 border-t border-zinc-800">
                                   <p className="text-[10px] text-lime-400 font-black uppercase tracking-widest mb-3 flex items-center gap-2">
                                     <UploadCloud className="w-4 h-4" /> Required: Upload Receipt
-                                  </p>
+                                   </p>
                                   <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-800 border-dashed rounded-2xl cursor-pointer hover:bg-zinc-900 transition">
                                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
                                       {receiptFile ? (
@@ -578,11 +572,11 @@ export default function CheckoutPage() {
                                 </button>
                               </div>
                             </motion.div>
-                          )}
+                           )}
                         </div>
                       )}
                     </motion.div>
-                  )}
+                   )}
                 </AnimatePresence>
               </div>
             )}
@@ -591,4 +585,4 @@ export default function CheckoutPage() {
       </div>
     </div>
   );
-}
+    }
