@@ -6,9 +6,11 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldCheck, Zap, Tag, MapPin, Calendar, Music, Tent, Ticket, Trophy, Search, Loader2, Radar, CheckCircle2, TrendingUp, Star, Mail, SearchCheck, Mic, Percent, CreditCard } from 'lucide-react';
+// 🛠 NEW: Import the currency formatter
+import { useCurrency } from './components/CurrencyProvider';
 
 // --- TYPES ---
-type Listing = { id: string; price: number; quantity: number }; 
+type Listing = { id: string; price: number; quantity: number };
 type Event = {
   id: string;
   title: string;
@@ -40,6 +42,9 @@ function HomeContent() {
   const cityParam = searchParams.get('city');
   const keywordParam = searchParams.get('keyword');
 
+  // 🛠 NEW: Initialize currency formatter
+  const { formatPrice } = useCurrency();
+
   const [data, setData] = useState<{ events: Event[]; count: number; location: { city: string } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false); 
@@ -48,7 +53,6 @@ function HomeContent() {
   const [activeKeyword, setActiveKeyword] = useState(keywordParam || '');
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeDate, setActiveDate] = useState<string>('Any');
-  
   const [currentHero, setCurrentHero] = useState(0);
   const [rotation, setRotation] = useState(0);
   const [visibleLimit, setVisibleLimit] = useState(6);
@@ -80,7 +84,8 @@ function HomeContent() {
     async function fetchStreamedEvents() {
       setLoading(true);
       setIsStreaming(true);
-      setData({ events: [], count: 0, location: { city: cityParam || 'London' } });
+      // 🛠 FIXED: Default to Nashville
+      setData({ events: [], count: 0, location: { city: cityParam || 'Nashville' } });
 
       try {
         let apiUrl = '/api/events?';
@@ -111,9 +116,9 @@ function HomeContent() {
               setData({
                 events: accumulatedEvents,
                 count: accumulatedEvents.length,
-                location: { city: cityParam || 'London' }
+                // 🛠 FIXED: Default to Nashville
+                location: { city: cityParam || 'Nashville' }
               });
-
               setLoading(false); 
             } catch(e) { }
           });
@@ -122,13 +127,14 @@ function HomeContent() {
         console.error('Streaming error:', error);
       } finally {
         setLoading(false);
-        setIsStreaming(false); 
+        setIsStreaming(false);
       }
     }
     fetchStreamedEvents();
   }, [cityParam, activeKeyword, activeCategory]);
 
-  const currentCity = data?.location?.city || cityParam || 'Lagos';
+  // 🛠 FIXED: Default to Nashville
+  const currentCity = data?.location?.city || cityParam || 'Nashville';
 
   const validEvents = useMemo(() => {
     if (!data?.events) return [];
@@ -265,7 +271,7 @@ function HomeContent() {
         )}
 
         <div className="absolute top-8 left-0 w-full z-30 px-4">
-           <form onSubmit={handleSearch} className="relative max-w-2xl mx-auto">
+          <form onSubmit={handleSearch} className="relative max-w-2xl mx-auto">
             <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
             <input
               type="text"
@@ -406,7 +412,7 @@ function HomeContent() {
         <div className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-xl py-4 border-b border-zinc-900 mb-8">
           <div className="flex overflow-x-auto hide-scrollbar gap-3 pb-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {CATEGORIES.map((tab) => {
-              const Icon = tab.icon;
+               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id} onClick={() => setActiveCategory(tab.id)}
@@ -437,7 +443,7 @@ function HomeContent() {
                 key={dateObj.id} 
                 onClick={() => setActiveDate(dateObj.id)}
                 className={`flex-shrink-0 flex flex-col items-center justify-center w-16 h-16 rounded-2xl border transition-all ${activeDate === dateObj.id ? 'bg-lime-400 border-lime-400 text-black shadow-[0_0_15px_rgba(57,255,20,0.2)]' : 'bg-zinc-900/50 border-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
-              >
+               >
                 <span className="text-[10px] font-black uppercase tracking-widest">{dateObj.dayOfWeek}</span>
                 <span className="text-xl font-black leading-none mt-1">{dateObj.dayOfMonth}</span>
               </button>
@@ -512,7 +518,8 @@ function HomeContent() {
                         <div className="mt-auto pt-4 border-t border-zinc-800/50 flex items-end justify-between">
                           <div>
                             <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Starting at</p>
-                            <p className="font-black text-2xl text-white tracking-tighter">₦{lowestPrice.toLocaleString()}</p>
+                            {/* 🛠 FIXED: Currency formatter replaces hardcoded Naira */}
+                            <p className="font-black text-2xl text-white tracking-tighter">{formatPrice(lowestPrice)}</p>
                           </div>
                           <Link href={`/event/${event.id}`} className={`px-5 py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all ${availableTickets > 0 ? 'bg-white text-black hover:bg-lime-400 shadow-[0_0_15px_rgba(57,255,20,0.2)]' : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}>
                             {availableTickets > 0 ? `Get Tickets` : 'Sold Out'}
@@ -530,7 +537,6 @@ function HomeContent() {
         {/* Custom CSS Animation for Marquee & Fonts */}
         <style dangerouslySetInnerHTML={{__html: `
           @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap');
-          
           .font-heavy {
             font-family: 'Archivo Black', sans-serif;
             text-transform: uppercase;
@@ -547,7 +553,6 @@ function HomeContent() {
             animation: marquee 35s linear infinite reverse;
           }
 
-          /* Brighter glowing text styles to match the image */
           .text-glow {
             color: #ffffff;
             text-shadow: 0 0 15px rgba(255, 255, 255, 0.9), 0 0 30px rgba(255, 255, 255, 0.5);
@@ -620,7 +625,8 @@ function HomeContent() {
         <div className="relative border border-zinc-800 bg-black overflow-hidden mt-8 rounded-[3rem] shadow-2xl py-12">
           <div className="flex flex-col justify-center pointer-events-none select-none overflow-hidden bg-black">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="whitespace-nowrap flex text-[5rem] md:text-[8rem] font-heavy leading-[0.85] tracking-tight">
+              {/* 🛠 FIXED: Reduced font size from text-[8rem] down to text-[3rem] md:text-[5rem] */}
+              <div key={i} className="whitespace-nowrap flex text-[3rem] md:text-[5rem] font-heavy leading-[0.85] tracking-tight">
                 <span className={`${i % 2 === 0 ? "animate-marquee text-glow" : "animate-marquee-slow text-dim"}`}>
                   TIX RESALE TIX RESALE TIX RESALE TIX RESALE TIX RESALE TIX RESALE TIX RESALE TIX RESALE
                 </span>
@@ -699,4 +705,4 @@ export default function Home() {
       <HomeContent />
     </Suspense>
   );
-}
+                        }
