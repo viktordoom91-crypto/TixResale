@@ -1,4 +1,4 @@
-here// app/components/Navbar.tsx
+// app/components/Navbar.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -7,8 +7,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 // 🛠 FIXED: Added ChevronDown for dropdowns
 import { Search, User, LogOut, ShieldAlert, Menu, X, MessageSquare, ChevronDown } from 'lucide-react';
-// 🛠 NEW: Import the currency hook
-import { useCurrency } from '@/components/CurrencyProvider';
+// 🛠 FIXED: Changed to direct relative path
+import { useCurrency } from './CurrencyProvider';
 
 export default function Navbar() {
   const [searchTerm, setSearchTerm] = useState('');
