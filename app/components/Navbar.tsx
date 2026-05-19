@@ -125,17 +125,17 @@ export default function Navbar() {
             )}
           </nav>
 
-          {/* Mobile Hamburger Button */}
+         {/* Mobile Hamburger Button */}
           <button 
             onClick={() => setIsMobileMenuOpen(true)} 
-            className="md:hidden p-2 -mr-2 text-zinc-400 hover:text-white transition-colors"
+            // 🛠 FIXED: Added 'relative z-20' to force the button above the logo's invisible box
+            className="relative z-20 md:hidden p-2 -mr-2 text-zinc-400 hover:text-white transition-colors"
           >
             <Menu className="w-6 h-6" />
           </button>
         </div>
       </header>
-
-      {/* 🛠 FIXED: Mobile Sidebar is now OUTSIDE the sticky header to prevent touch-blocking */}
+       <Menu classNam    {/* 🛠 FIXED: Mobile Sidebar is now OUTSIDE the sticky header to prevent touch-blocking */}
       <div 
         className={`fixed inset-0 bg-black/80 z-[60] backdrop-blur-sm transition-opacity duration-300 md:hidden ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={() => setIsMobileMenuOpen(false)}
