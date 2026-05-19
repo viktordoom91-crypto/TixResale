@@ -1,10 +1,11 @@
+here// app/layout.tsx
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-// Import your new components
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import { Providers } from "./components/Providers";
+import { CurrencyProvider } from "@/components/CurrencyProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,15 +34,15 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col font-sans bg-white text-gray-900">
         <Providers>
-        <Navbar />
-        {/* flex-1 ensures the footer is always pushed to the bottom if the page is short */}
-        <main className="flex-1 w-full">
-          {children}
-          
-        </main>
-        <Footer />
-              </Providers>
-
+          {/* 🛠 NEW: Wrap the app in the Currency Provider */}
+          <CurrencyProvider>
+            <Navbar />
+            <main className="flex-1 w-full">
+              {children}
+            </main>
+            <Footer />
+          </CurrencyProvider>
+        </Providers>
       </body>
     </html>
   );
