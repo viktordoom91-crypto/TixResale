@@ -11,16 +11,14 @@ export async function GET(request: Request) {
   const requestedKeyword = searchParams.get('keyword');
   const requestedCategory = searchParams.get('category');
 
-  // 🛠 FIXED: Default city changed from London to Nashville
-  const city = requestedCity || request.headers.get('x-vercel-ip-city') || 'Nashville';
-
-  // Run the external sync in the background so it doesn't block the user's initial load
+  // Run the external sync in the background so it doesn't block the user
   setTimeout(() => {
-    syncExternalEvents(city, requestedKeyword, requestedCategory).catch(console.error);
+    syncExternalEvents(requestedCity, requestedKeyword, requestedCategory).catch(console.error);
   }, 1000);
 
   let andConditions: any[] = [];
 
+  // 1. Keyword search (Artist/Venue) searches globally
   if (requestedKeyword) {
     andConditions.push({
       OR: [
@@ -29,14 +27,16 @@ export async function GET(request: Request) {
         { city: { contains: requestedKeyword, mode: 'insensitive' } } 
       ]
     });
-  } else if (!requestedCategory || requestedCategory === 'All') {
-    andConditions.push({ city: { equals: city, mode: 'insensitive' } });
-  }
-
+  } 
+  
+  // 2. Category search filters globally across the database
   if (requestedCategory && requestedCategory !== 'All') {
     let mappedCat = requestedCategory;
     if (requestedCategory === 'Concerts') mappedCat = 'Music';
-    if (requestedCategory === 'Theater') mappedCat = 'Theat'; 
+    if (requestedCategory === 'Theater') mappedCat = 'Theatre'; 
+    if (requestedCategory === 'Comedy') mappedCat = 'Comedy';
+    if (requestedCategory === 'Sports') mappedCat = 'Sports';
+    if (requestedCategory === 'Festivals') mappedCat = 'Festival';
 
     andConditions.push({
       OR: [
@@ -46,9 +46,14 @@ export async function GET(request: Request) {
     });
   }
 
+  // 3. City filter applied ONLY if explicitly requested from the Navbar dropdown
+  if (requestedCity) {
+    andConditions.push({ city: { equals: requestedCity, mode: 'insensitive' } });
+  }
+
   const dbQuery = andConditions.length > 0 ? { AND: andConditions } : {};
 
-  // 🛠 UI PAGINATION IS HANDLED HERE: Streams chunks of 12 events at a time
+  // Stream logic to handle UI pagination
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -104,7 +109,7 @@ export async function GET(request: Request) {
 }
 
 // --- UPGRADED TICKETMASTER AGGREGATOR ---
-async function syncExternalEvents(targetCity: string, keyword: string | null, category: string | null) {
+async function syncExternalEvents(targetCity: string | null, keyword: string | null, category: string | null) {
   try {
     const apiKey = process.env.TICKETMASTER_API_KEY;
     if (!apiKey) return;
@@ -112,19 +117,31 @@ async function syncExternalEvents(targetCity: string, keyword: string | null, ca
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&sort=date,asc`;
+    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}`;
     
-    // 🛠 FIXED: Removed the hardcoded size=10 limit. 
-    // If a keyword is provided, we grab up to 100 events to ensure we get the full tour.
+    // 🛠 GLOBAL & CATEGORY QUERY LOGIC
     if (keyword) {
-      tmUrl += `&keyword=${encodeURIComponent(keyword)}&size=100`;
+      // Pull the full artist tour globally
+      tmUrl += `&keyword=${encodeURIComponent(keyword)}&size=100&sort=date,asc`;
     } else if (category && category !== 'All') {
+      // Map categories to Ticketmaster classifications globally
       let tmCat = category;
       if (category === 'Concerts') tmCat = 'Music';
       if (category === 'Theater') tmCat = 'Arts & Theatre';
-      tmUrl += `&classificationName=${encodeURIComponent(tmCat)}&size=50`; 
+      if (category === 'Comedy') tmCat = 'Comedy';
+      if (category === 'Sports') tmCat = 'Sports';
+      
+      if (category === 'Festivals') {
+        tmUrl += `&keyword=Festival&size=50&sort=date,asc`;
+      } else {
+        tmUrl += `&classificationName=${encodeURIComponent(tmCat)}&size=50&sort=date,asc`; 
+      }
+    } else if (targetCity) {
+      // Fetch specific city
+      tmUrl += `&city=${encodeURIComponent(targetCity)}&size=50&sort=date,asc`;
     } else {
-      tmUrl += `&city=${encodeURIComponent(targetCity)}&size=40`;
+      // Default: Fetch top global events
+      tmUrl += `&size=50&sort=relevance,desc`;
     }
 
     const response = await fetch(tmUrl, { signal: controller.signal });
@@ -139,15 +156,16 @@ async function syncExternalEvents(targetCity: string, keyword: string | null, ca
     for (const extEvent of liveEvents) {
       const title = extEvent.name?.substring(0, 250) || "Live Event";
       const catName = extEvent.classifications?.[0]?.segment?.name || "Live Event";
-      const actualCity = extEvent._embedded?.venues?.[0]?.city?.name || targetCity;
+      const actualCity = extEvent._embedded?.venues?.[0]?.city?.name || targetCity || "Global";
       const venueName = extEvent._embedded?.venues?.[0]?.name || 'TBA';
       const description = `${catName} at ${venueName}`;
       const eventDateString = extEvent.dates?.start?.dateTime || extEvent.dates?.start?.localDate;
       const date = eventDateString ? new Date(eventDateString) : new Date(Date.now() + 86400000 * 7);
       const imageUrl = extEvent.images?.[0]?.url || "https://images.unsplash.com/photo-1540575861501-7cf05a4b125a?q=80&w=1000";
       
-      // 🛠 FIXED: Stripped out NGN calculation (* 1000) and updated fallback price to $50
-      const basePrice = extEvent.priceRanges?.[0]?.min ? Math.round(extEvent.priceRanges[0].min) : 50; 
+      // 🛠 EXACT TICKETMASTER PRICE FIX
+      // Uses the true minimum price from Ticketmaster (defaults to 50 if missing)
+      const basePrice = extEvent.priceRanges?.[0]?.min ? Number(extEvent.priceRanges[0].min.toFixed(2)) : 50.00; 
 
       const existingEvent = await prisma.event.findFirst({
         where: { title, city: actualCity }
@@ -162,25 +180,19 @@ async function syncExternalEvents(targetCity: string, keyword: string | null, ca
         
         const newBots = await Promise.all(
           Array.from({ length: numSellers }).map(() => {
-            const isCompany = Math.random() > 0.7;
-            const dynamicName = isCompany ? `${faker.company.name()} Tickets` : faker.person.fullName();
             return prisma.sellerProfile.create({
-              data: { name: dynamicName, isBot: true, avatarUrl: faker.image.avatarGitHub() }
+              data: { name: "Verified Seller", isBot: true, avatarUrl: faker.image.avatarGitHub() }
             });
           })
         );
 
         const batchesData = newBots.map((bot) => {
-          const marketRoll = Math.random();
-          let multiplier = 1;
-          if (marketRoll < 0.2) multiplier = 0.80 + (Math.random() * 0.15);      
-          else if (marketRoll < 0.7) multiplier = 1.0 + (Math.random() * 0.15); 
-          else multiplier = 1.2 + (Math.random() * 0.40);                       
-
+          // Keep price identical to TM, or add a tiny variation ($0 to $15) to represent better seats
+          const variation = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 15);
           return {
             eventId: newEvent.id,
             sellerId: bot.id,
-            price: Math.round(newEvent.basePrice * multiplier),
+            price: basePrice + variation,
             quantity: Math.floor(Math.random() * 4) + 1,
           };
         });
@@ -191,4 +203,4 @@ async function syncExternalEvents(targetCity: string, keyword: string | null, ca
   } catch (error) {
     console.error("Ticketmaster Sync Suppressed:", error instanceof Error ? error.message : "Timeout");
   }
-            }
+                 }
