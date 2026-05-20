@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldCheck, Zap, Tag, MapPin, Calendar, Music, Tent, Ticket, Trophy, Search, Loader2, Radar, CheckCircle2, TrendingUp, Star, Mail, SearchCheck, Mic, Percent, CreditCard } from 'lucide-react';
-// 🛠 NEW: Import the currency formatter
+
+// 🛠 Import the dynamic currency formatter
 import { useCurrency } from './components/CurrencyProvider';
 
 // --- TYPES ---
@@ -41,8 +42,9 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const cityParam = searchParams.get('city');
   const keywordParam = searchParams.get('keyword');
+  const categoryParam = searchParams.get('category');
 
-  // 🛠 NEW: Initialize currency formatter
+  // Initialize currency formatter
   const { formatPrice } = useCurrency();
 
   const [data, setData] = useState<{ events: Event[]; count: number; location: { city: string } } | null>(null);
@@ -51,7 +53,7 @@ function HomeContent() {
   
   const [searchInput, setSearchInput] = useState(keywordParam || '');
   const [activeKeyword, setActiveKeyword] = useState(keywordParam || '');
-  const [activeCategory, setActiveCategory] = useState('All');
+  const [activeCategory, setActiveCategory] = useState(categoryParam || 'All');
   const [activeDate, setActiveDate] = useState<string>('Any');
   const [currentHero, setCurrentHero] = useState(0);
   const [rotation, setRotation] = useState(0);
@@ -63,7 +65,12 @@ function HomeContent() {
       setSearchInput(keywordParam);
       setActiveCategory('All'); 
     }
-  }, [keywordParam]);
+    if (categoryParam !== null) {
+      setActiveCategory(categoryParam);
+      setActiveKeyword('');
+      setSearchInput('');
+    }
+  }, [keywordParam, categoryParam]);
 
   const upcomingDates = useMemo(() => {
     const dates = [];
@@ -84,8 +91,9 @@ function HomeContent() {
     async function fetchStreamedEvents() {
       setLoading(true);
       setIsStreaming(true);
-      // 🛠 FIXED: Default to Nashville
-      setData({ events: [], count: 0, location: { city: cityParam || 'Nashville' } });
+      
+      // 🛠 FIXED: Default to 'Global' if no city is specified to unlock worldwide queries
+      setData({ events: [], count: 0, location: { city: cityParam || 'Global' } });
 
       try {
         let apiUrl = '/api/events?';
@@ -116,8 +124,8 @@ function HomeContent() {
               setData({
                 events: accumulatedEvents,
                 count: accumulatedEvents.length,
-                // 🛠 FIXED: Default to Nashville
-                location: { city: cityParam || 'Nashville' }
+                // 🛠 FIXED: Maintain 'Global' label during stream
+                location: { city: cityParam || 'Global' }
               });
               setLoading(false); 
             } catch(e) { }
@@ -133,8 +141,8 @@ function HomeContent() {
     fetchStreamedEvents();
   }, [cityParam, activeKeyword, activeCategory]);
 
-  // 🛠 FIXED: Default to Nashville
-  const currentCity = data?.location?.city || cityParam || 'Nashville';
+  // 🛠 FIXED: currentCity defaults to Global
+  const currentCity = data?.location?.city || cityParam || 'Global';
 
   const validEvents = useMemo(() => {
     if (!data?.events) return [];
@@ -275,7 +283,7 @@ function HomeContent() {
             <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
             <input
               type="text"
-              placeholder={isStreaming ? "Streaming live inventory..." : `Search events, artists, or venues...`}
+              placeholder={isStreaming ? "Streaming live inventory..." : `Search global events, artists, or venues...`}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               className="w-full pl-14 pr-32 py-4 rounded-full bg-zinc-900/80 backdrop-blur-md text-white font-medium border border-zinc-800 focus:border-lime-500 focus:ring-1 focus:ring-lime-500 transition-all outline-none"
@@ -412,7 +420,7 @@ function HomeContent() {
         <div className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-xl py-4 border-b border-zinc-900 mb-8">
           <div className="flex overflow-x-auto hide-scrollbar gap-3 pb-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {CATEGORIES.map((tab) => {
-               const Icon = tab.icon;
+              const Icon = tab.icon;
               return (
                 <button
                   key={tab.id} onClick={() => setActiveCategory(tab.id)}
@@ -704,4 +712,4 @@ export default function Home() {
       <HomeContent />
     </Suspense>
   );
-                        }
+      }
