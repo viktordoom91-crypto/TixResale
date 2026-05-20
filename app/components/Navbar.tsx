@@ -32,7 +32,11 @@ export default function Navbar() {
   // 🛠 FIXED: Wrapped the entire return in a fragment <> so the mobile menu can sit OUTSIDE the header
   return (
     <>
+      return (
+    <>  {/* 🛠 MAKE SURE THIS IS HERE! */}
       <header className="bg-zinc-950 text-white sticky top-0 z-50 border-b border-zinc-900">
+        {/* ... all your header code ... */}
+      </header>
         <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between">
           
           {/* Left Side: Logo & Desktop Search */}
