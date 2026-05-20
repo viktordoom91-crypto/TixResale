@@ -139,7 +139,8 @@ export default function Navbar() {
           </button>
         </div>
       </header>
-       <Menu classNam    {/* 🛠 FIXED: Mobile Sidebar is now OUTSIDE the sticky header to prevent touch-blocking */}
+
+      {/* 🛠 FIXED: Mobile Sidebar is now OUTSIDE the sticky header to prevent touch-blocking */}
       <div 
         className={`fixed inset-0 bg-black/80 z-[60] backdrop-blur-sm transition-opacity duration-300 md:hidden ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={() => setIsMobileMenuOpen(false)}
