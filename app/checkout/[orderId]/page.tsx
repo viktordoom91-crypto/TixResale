@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, ShieldCheck, MapPin, Calendar, Copy, Ticket, CheckCircle2, AlertTriangle, ArrowLeft, Lock, Minus, Plus, UploadCloud, FileImage, CreditCard, MessageSquareWarning, ArrowRight, Check, Mail, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 
-// 🛠 NEW: Import the currency hook
 import { useCurrency } from '../../components/CurrencyProvider';
 
 const SECTIONS = ['VIP Standing', 'Main Floor', 'Balcony Unreserved', 'Backstage Pass', 'Lower Tier', 'Golden Circle'];
@@ -27,7 +26,6 @@ export default function CheckoutPage() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [copiedText, setCopiedText] = useState('');
   
-  // 🛠 NEW: Initialize currency formatter
   const { formatPrice } = useCurrency();
 
   // --- PAGINATION & FLOW STATE ---
@@ -35,7 +33,6 @@ export default function CheckoutPage() {
   const [selectedGateway, setSelectedGateway] = useState<'CARD' | 'ESCROW' | null>(null);
   const [escrowNotified, setEscrowNotified] = useState(false);
   
-  // 5-Minute Escrow Wait Timer State
   const [escrowWaitTime, setEscrowWaitTime] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -47,7 +44,6 @@ export default function CheckoutPage() {
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [maxAvailable, setMaxAvailable] = useState(1);
 
-  // 🛠 NEW: User Details State
   const [buyerName, setBuyerName] = useState('');
   const [buyerEmail, setBuyerEmail] = useState('');
   const [buyerPhone, setBuyerPhone] = useState('');
@@ -124,7 +120,6 @@ export default function CheckoutPage() {
       const res = await fetch('/api/checkout/card2crypto', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Included buyer details in payload
         body: JSON.stringify({ 
           orderId: orderId,
           buyerName, buyerEmail, buyerPhone, buyerAddress
@@ -174,7 +169,6 @@ export default function CheckoutPage() {
       const confirmRes = await fetch('/api/checkout/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Included buyer details in payload
         body: JSON.stringify({ 
           orderId: orderId, 
           receiptUrl: cloudinaryData.secure_url,
@@ -242,7 +236,6 @@ export default function CheckoutPage() {
         </button>
         <div className="flex items-center space-x-2">
           <Lock className="w-4 h-4 text-lime-400" />
-          {/* 🛠 UPDATED: Now shows out of 4 steps */}
           <span className="font-black text-xs uppercase tracking-[0.2em] text-white">Checkout Step {step} of 4</span>
         </div>
         <div className="w-20"></div>
@@ -292,7 +285,6 @@ export default function CheckoutPage() {
               </div>
 
               <div className="p-6 space-y-4 bg-zinc-900/50">
-                {/* 🛠 FIXED: Currency dynamically formats globally */}
                 <div className="flex justify-between text-zinc-400 font-bold text-sm">
                   <span>Subtotal</span>
                   <span className="text-white">{formatPrice(subtotal)}</span>
@@ -340,7 +332,6 @@ export default function CheckoutPage() {
 
             {!isExpired && (
               <div className="flex items-center justify-between mb-8 px-2">
-                {/* 🛠 UPDATED: Now maps over 4 steps instead of 3 */}
                 {[1, 2, 3, 4].map((num) => (
                   <div key={num} className="flex flex-col items-center flex-1">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-colors duration-500 ${
@@ -370,23 +361,24 @@ export default function CheckoutPage() {
                       <h3 className="text-2xl font-black text-white uppercase tracking-tight mb-2">Configure Tickets</h3>
                       <p className="text-zinc-500 text-sm font-medium mb-8">Select the exact number of tickets you want to secure.</p>
                       
-                      <div className="flex items-center justify-between bg-zinc-950 p-6 rounded-2xl border border-zinc-800 mb-8">
+                      {/* 🛠 FIXED: Flex wrap and gap for mobile quantity buttons */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-950 p-6 rounded-2xl border border-zinc-800 mb-8">
                         <div>
                           <span className="text-sm font-black uppercase tracking-widest text-zinc-400">Total Quantity</span>
                           <p className="text-xs text-lime-400 font-bold uppercase tracking-widest mt-1">{maxAvailable} Available in this batch</p>
                         </div>
-                        <div className="flex items-center bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden">
+                        <div className="flex items-center bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden self-start sm:self-auto w-full sm:w-auto justify-between sm:justify-start">
                           <button 
                             onClick={() => setSelectedQuantity(Math.max(1, currentQuantity - 1))} 
-                            className="p-4 hover:bg-zinc-800 text-white transition disabled:opacity-50"
+                            className="p-4 hover:bg-zinc-800 text-white transition disabled:opacity-50 flex-1 sm:flex-none flex justify-center"
                             disabled={currentQuantity <= 1}
                           >
                             <Minus className="w-5 h-5" />
                           </button>
-                          <span className="px-6 py-2 font-black text-xl text-white border-x border-zinc-700">{currentQuantity}</span>
+                          <span className="px-6 py-2 font-black text-xl text-white border-x border-zinc-700 text-center flex-1 sm:flex-none">{currentQuantity}</span>
                           <button 
                             onClick={() => setSelectedQuantity(Math.min(maxAvailable, currentQuantity + 1))} 
-                            className="p-4 hover:bg-zinc-800 text-white transition disabled:opacity-50"
+                            className="p-4 hover:bg-zinc-800 text-white transition disabled:opacity-50 flex-1 sm:flex-none flex justify-center"
                             disabled={currentQuantity >= maxAvailable}
                           >
                             <Plus className="w-5 h-5" />
@@ -400,7 +392,7 @@ export default function CheckoutPage() {
                     </motion.div>
                   )}
 
-                  {/* 🛠 NEW: STEP 2 - DELIVERY DETAILS */}
+                  {/* STEP 2 - DELIVERY DETAILS */}
                   {step === 2 && (
                     <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-8">
                       <h3 className="text-2xl font-black text-white uppercase tracking-tight mb-2">Delivery Details</h3>
@@ -661,4 +653,4 @@ export default function CheckoutPage() {
       </div>
     </div>
   );
-    }
+        }
