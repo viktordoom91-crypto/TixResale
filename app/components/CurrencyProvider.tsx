@@ -1,13 +1,12 @@
-// components/CurrencyProvider.tsx
+// app/components/CurrencyProvider.tsx
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-// Removed NGN, set USD as the base currency
 type Currency = 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD';
 
-// Exchange rates relative to 1 USD
-const RATES: Record<Currency, number> = {
+// Fallback rates just in case the live API goes down
+const FALLBACK_RATES: Record<Currency, number> = {
   USD: 1,
   EUR: 0.92,
   GBP: 0.79,
@@ -33,27 +32,43 @@ const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
   const [currency, setCurrency] = useState<Currency>('USD');
+  const [rates, setRates] = useState<Record<string, number>>(FALLBACK_RATES);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     const stored = localStorage.getItem('user-currency') as Currency;
-    if (stored && RATES[stored]) {
+    if (stored && FALLBACK_RATES[stored]) {
       setCurrency(stored);
-      return;
+    } else {
+      // Auto-detect based on their device's timezone
+      try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (tz.includes('Europe/London')) setCurrency('GBP');
+        else if (tz.includes('Europe')) setCurrency('EUR');
+        else if (tz.includes('Australia')) setCurrency('AUD');
+        else if (tz.includes('Canada')) setCurrency('CAD');
+        else setCurrency('USD');
+      } catch (e) {
+        setCurrency('USD');
+      }
     }
 
-    // Auto-detect based on their device's timezone
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (tz.includes('Europe/London')) setCurrency('GBP');
-      else if (tz.includes('Europe')) setCurrency('EUR');
-      else if (tz.includes('Australia')) setCurrency('AUD');
-      else if (tz.includes('Canada')) setCurrency('CAD');
-      else setCurrency('USD');
-    } catch (e) {
-      setCurrency('USD');
-    }
+    // 🛠 NEW: Fetch real-time live currency exchange rates
+    const fetchLiveRates = async () => {
+      try {
+        // Using a free, no-auth open exchange rate API
+        const response = await fetch('https://open.er-api.com/v6/latest/USD');
+        const data = await response.json();
+        if (data && data.rates) {
+          setRates(data.rates);
+        }
+      } catch (error) {
+        console.error('Failed to fetch live rates, falling back to static rates.', error);
+      }
+    };
+
+    fetchLiveRates();
   }, []);
 
   const handleSetCurrency = (c: Currency) => {
@@ -62,9 +77,12 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   };
 
   const formatPrice = (amountInUSD: number) => {
-    const converted = amountInUSD * RATES[currency];
     // Prevent hydration errors by returning base string on server
     if (!mounted) return `$${amountInUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    
+    // 🛠 NEW: Use the dynamically fetched rate!
+    const dynamicRate = rates[currency] || FALLBACK_RATES[currency] || 1;
+    const converted = amountInUSD * dynamicRate;
     
     return `${SYMBOLS[currency]}${converted.toLocaleString(undefined, { 
       minimumFractionDigits: 2, 
