@@ -44,7 +44,8 @@ export default function Navbar() {
               />
             </Link>
             
-            <form onSubmit={handleSearch} className="hidden lg:flex bg-zinc-900 rounded-full items-center px-4 py-2.5 w-72 border border-zinc-800 focus-within:border-lime-500 focus-within:ring-1 focus-within:ring-lime-500 transition-all">
+            {/* 🛠 FIXED: Added relative z-20 to prevent logo scaling from blocking clicks */}
+            <form onSubmit={handleSearch} className="hidden lg:flex relative z-20 bg-zinc-900 rounded-full items-center px-4 py-2.5 w-72 border border-zinc-800 focus-within:border-lime-500 focus-within:ring-1 focus-within:ring-lime-500 transition-all">
               <Search className="w-4 h-4 text-zinc-500 mr-3" />
               <input 
                 type="text" 
@@ -57,7 +58,8 @@ export default function Navbar() {
           </div>
 
           {/* Right Side: Desktop Navigation */}
-          <nav className="hidden md:flex space-x-6 items-center text-[10px] lg:text-xs font-bold uppercase tracking-widest text-zinc-400">
+          {/* 🛠 FIXED: Added relative z-20 to the entire nav bar block */}
+          <nav className="hidden md:flex relative z-20 space-x-6 items-center text-[10px] lg:text-xs font-bold uppercase tracking-widest text-zinc-400">
             
             <Link href="/explore" className="hover:text-lime-400 transition-colors">Explore</Link>
             
@@ -67,9 +69,10 @@ export default function Navbar() {
                 Categories <ChevronDown className="w-3 h-3" />
               </button>
               <div className="absolute top-full left-0 mt-0 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                <Link href="/category/concerts" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-t-xl transition-colors">Concerts</Link>
-                <Link href="/category/festivals" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white transition-colors">Festivals</Link>
-                <Link href="/category/sports" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-b-xl transition-colors">Sports</Link>
+                {/* 🛠 FIXED: Updated to URL Query parameters */}
+                <Link href="/?category=Concerts" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-t-xl transition-colors">Concerts</Link>
+                <Link href="/?category=Festivals" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white transition-colors">Festivals</Link>
+                <Link href="/?category=Sports" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-b-xl transition-colors">Sports</Link>
               </div>
             </div>
 
@@ -79,10 +82,11 @@ export default function Navbar() {
                 Cities <ChevronDown className="w-3 h-3" />
               </button>
               <div className="absolute top-full left-0 mt-0 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                <Link href="/city/london" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-t-xl transition-colors">London</Link>
-                <Link href="/city/new-york" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white transition-colors">New York</Link>
-                <Link href="/city/paris" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white transition-colors">Paris</Link>
-                <Link href="/city/toronto" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-b-xl transition-colors">Toronto</Link>
+                {/* 🛠 FIXED: Updated to URL Query parameters */}
+                <Link href="/?city=London" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-t-xl transition-colors">London</Link>
+                <Link href="/?city=New+York" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white transition-colors">New York</Link>
+                <Link href="/?city=Paris" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white transition-colors">Paris</Link>
+                <Link href="/?city=Toronto" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-b-xl transition-colors">Toronto</Link>
               </div>
             </div>
 
@@ -134,7 +138,7 @@ export default function Navbar() {
         </div>
       </header>
 
-      {/* Mobile Sidebar is OUTSIDE the sticky header to prevent touch-blocking */}
+      {/* Mobile Sidebar is OUTSIDE the sticky header */}
       <div 
         className={`fixed inset-0 bg-black/80 z-[60] backdrop-blur-sm transition-opacity duration-300 md:hidden ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={() => setIsMobileMenuOpen(false)}
@@ -185,15 +189,17 @@ export default function Navbar() {
             <div className="space-y-4">
               <p className="text-[10px] text-zinc-600 mb-2">Discover</p>
               <Link href="/explore" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Explore All</Link>
-              <Link href="/category/concerts" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Concerts</Link>
-              <Link href="/category/festivals" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Festivals</Link>
+              {/* 🛠 FIXED: Updated to URL Query parameters */}
+              <Link href="/?category=Concerts" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Concerts</Link>
+              <Link href="/?category=Festivals" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Festivals</Link>
             </div>
 
             <div className="space-y-4 pt-4 border-t border-zinc-900">
               <p className="text-[10px] text-zinc-600 mb-2">Top Cities</p>
-              <Link href="/city/london" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">London</Link>
-              <Link href="/city/new-york" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">New York</Link>
-              <Link href="/city/paris" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Paris</Link>
+              {/* 🛠 FIXED: Updated to URL Query parameters */}
+              <Link href="/?city=London" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">London</Link>
+              <Link href="/?city=New+York" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">New York</Link>
+              <Link href="/?city=Paris" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Paris</Link>
             </div>
 
             <div className="space-y-4 pt-4 border-t border-zinc-900">
@@ -229,4 +235,4 @@ export default function Navbar() {
       </div>
     </>
   );
-            }
+      }
