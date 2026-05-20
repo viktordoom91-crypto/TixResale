@@ -1,12 +1,14 @@
-// components/BuyTicketButton.tsx
+// app/components/BuyTicketButton.tsx
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useCurrency } from './CurrencyProvider';
 
 export default function BuyTicketButton({ listingId, price }: { listingId: string, price: number }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { formatPrice } = useCurrency(); // 🛠 NEW: Initialize currency formatter
 
   const handleBuy = async () => {
     setLoading(true);
@@ -16,7 +18,6 @@ export default function BuyTicketButton({ listingId, price }: { listingId: strin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           listingId,
-          // ✅ FIXED: Using a valid 24-character MongoDB hex string instead of "guest-user"
           userId: '65f1a2b3c4d5e6f7a8b9c0d1', 
         }),
       });
@@ -24,7 +25,6 @@ export default function BuyTicketButton({ listingId, price }: { listingId: strin
       const data = await response.json();
 
       if (response.ok) {
-        // Ticket locked! Route them to the manual transfer page
         router.push(`/checkout/${data.orderId}`);
       } else {
         alert(data.error || 'Failed to lock ticket.');
@@ -45,7 +45,8 @@ export default function BuyTicketButton({ listingId, price }: { listingId: strin
         loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-black text-white hover:bg-gray-800 shadow-md hover:shadow-lg'
       }`}
     >
-      {loading ? 'Locking Ticket...' : `Buy for ₦${price.toLocaleString()}`}
+      {/* 🛠 FIXED: Replaced hardcoded Naira with dynamic formatPrice */}
+      {loading ? 'Locking Ticket...' : `Buy for ${formatPrice(price)}`}
     </button>
   );
 }
