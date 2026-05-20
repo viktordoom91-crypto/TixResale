@@ -4,9 +4,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-// 🛠 FIXED: Removed WhatsApp/X icons and added Mail icon
 import { Clock, ShieldCheck, MapPin, Calendar, Copy, Ticket, CheckCircle2, AlertTriangle, ArrowLeft, Lock, Minus, Plus, UploadCloud, FileImage, CreditCard, MessageSquareWarning, ArrowRight, Check, Mail, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
+
+// 🛠 NEW: Import the currency hook
+import { useCurrency } from '../../components/CurrencyProvider';
 
 const SECTIONS = ['VIP Standing', 'Main Floor', 'Balcony Unreserved', 'Backstage Pass', 'Lower Tier', 'Golden Circle'];
 const getSeatInfo = (id: string) => {
@@ -25,6 +27,9 @@ export default function CheckoutPage() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [copiedText, setCopiedText] = useState('');
   
+  // 🛠 NEW: Initialize currency formatter
+  const { formatPrice } = useCurrency();
+
   // --- PAGINATION & FLOW STATE ---
   const [step, setStep] = useState(1);
   const [selectedGateway, setSelectedGateway] = useState<'CARD' | 'ESCROW' | null>(null);
@@ -32,7 +37,7 @@ export default function CheckoutPage() {
   
   // 5-Minute Escrow Wait Timer State
   const [escrowWaitTime, setEscrowWaitTime] = useState<number | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0); 
+  const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
   const [activeMethodIndex, setActiveMethodIndex] = useState(0);
@@ -41,6 +46,12 @@ export default function CheckoutPage() {
   const [cardLoading, setCardLoading] = useState(false);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [maxAvailable, setMaxAvailable] = useState(1);
+
+  // 🛠 NEW: User Details State
+  const [buyerName, setBuyerName] = useState('');
+  const [buyerEmail, setBuyerEmail] = useState('');
+  const [buyerPhone, setBuyerPhone] = useState('');
+  const [buyerAddress, setBuyerAddress] = useState('');
 
   const fetchOrder = useCallback(async (isSilentRefresh = false) => {
     if (!isSilentRefresh) setLoading(true);
@@ -113,7 +124,11 @@ export default function CheckoutPage() {
       const res = await fetch('/api/checkout/card2crypto', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: orderId })
+        // Included buyer details in payload
+        body: JSON.stringify({ 
+          orderId: orderId,
+          buyerName, buyerEmail, buyerPhone, buyerAddress
+        })
       });
       const resData = await res.json();
       
@@ -159,7 +174,12 @@ export default function CheckoutPage() {
       const confirmRes = await fetch('/api/checkout/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: orderId, receiptUrl: cloudinaryData.secure_url }),
+        // Included buyer details in payload
+        body: JSON.stringify({ 
+          orderId: orderId, 
+          receiptUrl: cloudinaryData.secure_url,
+          buyerName, buyerEmail, buyerPhone, buyerAddress
+        }),
       });
       if (confirmRes.ok) {
         alert("Payment submitted! The admin is verifying your receipt.");
@@ -210,8 +230,6 @@ export default function CheckoutPage() {
   const venueParts = event.description?.split(' at ') || [];
   const venueName = venueParts.length > 1 ? venueParts[1] : event.city;
   const seatInfo = getSeatInfo(ticketBatch.id);
-  
-  // 🛠 FIXED: Replaced WhatsApp with Email Link
   const EMAIL_URL = `mailto:SeatExchangeInfo@gmail.com?subject=${encodeURIComponent(`Escrow Verification: Order ID ${order.id}`)}&body=${encodeURIComponent(`Hi Salex Escrow,\n\nI am ready to make a manual transfer for Order ID: ${order.id}.\n\n`)}`;
 
   return (
@@ -224,7 +242,8 @@ export default function CheckoutPage() {
         </button>
         <div className="flex items-center space-x-2">
           <Lock className="w-4 h-4 text-lime-400" />
-          <span className="font-black text-xs uppercase tracking-[0.2em] text-white">Checkout Step {step} of 3</span>
+          {/* 🛠 UPDATED: Now shows out of 4 steps */}
+          <span className="font-black text-xs uppercase tracking-[0.2em] text-white">Checkout Step {step} of 4</span>
         </div>
         <div className="w-20"></div>
       </header>
@@ -273,17 +292,18 @@ export default function CheckoutPage() {
               </div>
 
               <div className="p-6 space-y-4 bg-zinc-900/50">
+                {/* 🛠 FIXED: Currency dynamically formats globally */}
                 <div className="flex justify-between text-zinc-400 font-bold text-sm">
                   <span>Subtotal</span>
-                  <span className="text-white">₦{subtotal.toLocaleString()}</span>
+                  <span className="text-white">{formatPrice(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-zinc-400 font-bold text-sm">
                   <span>VAT ({vatRate}%)</span>
-                  <span className="text-white">₦{vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-white">{formatPrice(vatAmount)}</span>
                 </div>
                 <div className="pt-4 mt-2 border-t border-zinc-800 flex justify-between items-center">
                   <span className="font-black uppercase tracking-widest text-zinc-400 text-xs">Total</span>
-                  <span className="font-black text-3xl text-white tracking-tighter">₦{totalPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  <span className="font-black text-3xl text-white tracking-tighter">{formatPrice(totalPrice)}</span>
                 </div>
               </div>
             </div>
@@ -295,8 +315,6 @@ export default function CheckoutPage() {
               <p className="text-xs text-zinc-500 font-medium mb-4 leading-relaxed">
                 If you encounter any issues during payment or need your receipt verified manually, our Escrow Agents are live.
               </p>
-              
-              {/* 🛠 FIXED: Replaced X and WhatsApp with a single full-width Email Support button */}
               <div className="flex gap-3">
                 <a href={EMAIL_URL} className="flex-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 py-3 rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest hover:bg-blue-500/20 transition">
                   <Mail className="w-4 h-4" /> Email Escrow Support
@@ -322,7 +340,8 @@ export default function CheckoutPage() {
 
             {!isExpired && (
               <div className="flex items-center justify-between mb-8 px-2">
-                {[1, 2, 3].map((num) => (
+                {/* 🛠 UPDATED: Now maps over 4 steps instead of 3 */}
+                {[1, 2, 3, 4].map((num) => (
                   <div key={num} className="flex flex-col items-center flex-1">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-colors duration-500 ${
                       step === num ? 'bg-lime-400 text-black shadow-[0_0_15px_rgba(57,255,20,0.3)]' : 
@@ -376,14 +395,75 @@ export default function CheckoutPage() {
                       </div>
 
                       <button onClick={() => setStep(2)} className="w-full bg-lime-400 text-black py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-lime-300 transition flex justify-center items-center gap-2">
+                        Continue to Details <ArrowRight className="w-5 h-5" />
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {/* 🛠 NEW: STEP 2 - DELIVERY DETAILS */}
+                  {step === 2 && (
+                    <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-8">
+                      <h3 className="text-2xl font-black text-white uppercase tracking-tight mb-2">Delivery Details</h3>
+                      <p className="text-zinc-500 text-sm font-medium mb-8">Where should we send your digital tickets?</p>
+                      
+                      <div className="space-y-5 mb-8">
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-widest text-zinc-400 mb-2">Full Name *</label>
+                          <input 
+                            type="text" 
+                            value={buyerName} 
+                            onChange={(e) => setBuyerName(e.target.value)} 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white focus:border-lime-500 focus:ring-1 focus:ring-lime-500 outline-none transition-all placeholder-zinc-700" 
+                            placeholder="John Doe" 
+                            required 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-widest text-zinc-400 mb-2">Email Address *</label>
+                          <input 
+                            type="email" 
+                            value={buyerEmail} 
+                            onChange={(e) => setBuyerEmail(e.target.value)} 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white focus:border-lime-500 focus:ring-1 focus:ring-lime-500 outline-none transition-all placeholder-zinc-700" 
+                            placeholder="john@example.com" 
+                            required 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-widest text-zinc-400 mb-2">Phone Number *</label>
+                          <input 
+                            type="tel" 
+                            value={buyerPhone} 
+                            onChange={(e) => setBuyerPhone(e.target.value)} 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white focus:border-lime-500 focus:ring-1 focus:ring-lime-500 outline-none transition-all placeholder-zinc-700" 
+                            placeholder="+1 234 567 8900" 
+                            required 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-black uppercase tracking-widest text-zinc-400 mb-2">Billing Address (Optional)</label>
+                          <input 
+                            type="text" 
+                            value={buyerAddress} 
+                            onChange={(e) => setBuyerAddress(e.target.value)} 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white focus:border-lime-500 focus:ring-1 focus:ring-lime-500 outline-none transition-all placeholder-zinc-700" 
+                            placeholder="123 Main St, City, Country" 
+                          />
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={() => setStep(3)} 
+                        disabled={!buyerName.trim() || !buyerEmail.trim() || !buyerPhone.trim()} 
+                        className="w-full bg-lime-400 text-black py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-lime-300 transition flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                         Continue to Payment <ArrowRight className="w-5 h-5" />
                       </button>
                     </motion.div>
                   )}
 
-                  {/* STEP 2: CHOOSE GATEWAY */}
-                  {step === 2 && (
-                    <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-8">
+                  {/* STEP 3: CHOOSE GATEWAY */}
+                  {step === 3 && (
+                    <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-8">
                       <h3 className="text-2xl font-black text-white uppercase tracking-tight mb-2">Select Gateway</h3>
                       <p className="text-zinc-500 text-sm font-medium mb-8">Choose how you want to secure these tickets.</p>
 
@@ -421,22 +501,20 @@ export default function CheckoutPage() {
                         </div>
                       </div>
 
-                      <button onClick={() => setStep(3)} disabled={!selectedGateway} className="w-full bg-lime-400 text-black py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-lime-300 transition flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                      <button onClick={() => setStep(4)} disabled={!selectedGateway} className="w-full bg-lime-400 text-black py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-lime-300 transition flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                         Proceed <ArrowRight className="w-5 h-5" />
                       </button>
                     </motion.div>
                   )}
 
-                  {/* STEP 3: EXECUTE PAYMENT */}
-                  {step === 3 && (
-                    <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                  {/* STEP 4: EXECUTE PAYMENT */}
+                  {step === 4 && (
+                    <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                       
                       {order.status === 'ESCROW_REVIEW' && (
                         <div className="m-8 p-6 bg-orange-500/10 border border-orange-500/30 rounded-2xl text-center">
                           <MessageSquareWarning className="w-8 h-8 text-orange-400 mx-auto mb-3" />
                           <h3 className="text-white font-black uppercase tracking-tight mb-2">Admin Review Ongoing</h3>
-                          
-                          {/* 🛠 FIXED: Updated warning text to point to Email */}
                           <p className="text-zinc-400 font-medium text-xs mb-4 max-w-sm mx-auto">
                             The admin has flagged your payment. Please use the Email button on the left to resolve the issue with Escrow immediately.
                           </p>
@@ -468,8 +546,6 @@ export default function CheckoutPage() {
                               <p className="text-zinc-400 font-medium text-sm mb-10 max-w-md mx-auto leading-relaxed">
                                 To ensure maximum security, manual transfers require authorization from an Escrow Agent. Click below to notify them and receive your secure payment details.
                               </p>
-                              
-                              {/* 🛠 FIXED: Replaced WhatsApp action with Email Action */}
                               <button
                                 onClick={() => {
                                   window.location.href = EMAIL_URL;
