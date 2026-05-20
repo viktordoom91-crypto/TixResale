@@ -29,6 +29,20 @@ export default function Navbar() {
     return null;
   }
 
+  // Extended Cities List
+  const CITIES = [
+    { name: 'London', query: 'London' },
+    { name: 'New York', query: 'New+York' },
+    { name: 'Los Angeles', query: 'Los+Angeles' },
+    { name: 'Nashville', query: 'Nashville' },
+    { name: 'Toronto', query: 'Toronto' },
+    { name: 'Paris', query: 'Paris' },
+    { name: 'Berlin', query: 'Berlin' },
+    { name: 'Tokyo', query: 'Tokyo' },
+    { name: 'Sydney', query: 'Sydney' },
+    { name: 'Dubai', query: 'Dubai' }
+  ];
+
   return (
     <>
       <header className="bg-zinc-950 text-white sticky top-0 z-50 border-b border-zinc-900">
@@ -36,17 +50,19 @@ export default function Navbar() {
           
           {/* Left Side: Logo & Desktop Search */}
           <div className="flex items-center md:gap-8 w-full md:w-auto">
-            <Link href="/" className="flex items-center cursor-pointer group flex-shrink-0 mr-auto md:mr-6">
+            
+            {/* 🛠 FIXED: Forced logo to z-0 so it CANNOT block other elements */}
+            <Link href="/" className="flex items-center cursor-pointer group flex-shrink-0 mr-auto md:mr-6 relative z-0">
               <img 
                 src="/logo.png" 
                 alt="Tixresale" 
-                className="w-44 md:w-52 h-10 md:h-12 object-contain flex-shrink-0 scale-[2] md:scale-[2.5] origin-left transition-transform" 
+                className="w-44 md:w-52 h-10 md:h-12 object-contain flex-shrink-0 scale-[2] md:scale-[2.5] origin-left transition-transform pointer-events-none" 
               />
             </Link>
             
-            {/* 🛠 FIXED: Added relative z-20 to prevent logo scaling from blocking clicks */}
-            <form onSubmit={handleSearch} className="hidden lg:flex relative z-20 bg-zinc-900 rounded-full items-center px-4 py-2.5 w-72 border border-zinc-800 focus-within:border-lime-500 focus-within:ring-1 focus-within:ring-lime-500 transition-all">
-              <Search className="w-4 h-4 text-zinc-500 mr-3" />
+            {/* 🛠 FIXED: Aggressive z-[100] so the search bar sits on top of the logo's invisible box */}
+            <form onSubmit={handleSearch} className="hidden lg:flex relative z-[100] bg-zinc-900 rounded-full items-center px-4 py-2.5 w-72 border border-zinc-800 focus-within:border-lime-500 focus-within:ring-1 focus-within:ring-lime-500 transition-all">
+              <Search className="w-4 h-4 text-zinc-500 mr-3 pointer-events-none" />
               <input 
                 type="text" 
                 value={searchTerm}
@@ -58,8 +74,8 @@ export default function Navbar() {
           </div>
 
           {/* Right Side: Desktop Navigation */}
-          {/* 🛠 FIXED: Added relative z-20 to the entire nav bar block */}
-          <nav className="hidden md:flex relative z-20 space-x-6 items-center text-[10px] lg:text-xs font-bold uppercase tracking-widest text-zinc-400">
+          {/* 🛠 FIXED: Aggressive z-[100] so all nav links sit on top of the logo's invisible box */}
+          <nav className="hidden md:flex relative z-[100] space-x-6 items-center text-[10px] lg:text-xs font-bold uppercase tracking-widest text-zinc-400">
             
             <Link href="/explore" className="hover:text-lime-400 transition-colors">Explore</Link>
             
@@ -69,7 +85,6 @@ export default function Navbar() {
                 Categories <ChevronDown className="w-3 h-3" />
               </button>
               <div className="absolute top-full left-0 mt-0 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                {/* 🛠 FIXED: Updated to URL Query parameters */}
                 <Link href="/?category=Concerts" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-t-xl transition-colors">Concerts</Link>
                 <Link href="/?category=Festivals" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white transition-colors">Festivals</Link>
                 <Link href="/?category=Sports" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-b-xl transition-colors">Sports</Link>
@@ -81,12 +96,17 @@ export default function Navbar() {
               <button className="flex items-center gap-1 hover:text-lime-400 transition-colors">
                 Cities <ChevronDown className="w-3 h-3" />
               </button>
-              <div className="absolute top-full left-0 mt-0 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                {/* 🛠 FIXED: Updated to URL Query parameters */}
-                <Link href="/?city=London" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-t-xl transition-colors">London</Link>
-                <Link href="/?city=New+York" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white transition-colors">New York</Link>
-                <Link href="/?city=Paris" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white transition-colors">Paris</Link>
-                <Link href="/?city=Toronto" className="block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white rounded-b-xl transition-colors">Toronto</Link>
+              {/* 🛠 FIXED: Added max-h-80 and overflow-y-auto so the expanded list is scrollable! */}
+              <div className="absolute top-full left-0 mt-0 w-48 max-h-80 overflow-y-auto hide-scrollbar bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                {CITIES.map((city, idx) => (
+                  <Link 
+                    key={city.name} 
+                    href={`/?city=${city.query}`} 
+                    className={`block px-4 py-3 hover:bg-zinc-800 hover:text-lime-400 text-white transition-colors ${idx === 0 ? 'rounded-t-xl' : ''} ${idx === CITIES.length - 1 ? 'rounded-b-xl' : ''}`}
+                  >
+                    {city.name}
+                  </Link>
+                ))}
               </div>
             </div>
 
@@ -129,26 +149,27 @@ export default function Navbar() {
           </nav>
 
           {/* Mobile Hamburger Button */}
+          {/* 🛠 FIXED: Aggressive z-[100] for mobile menu button */}
           <button 
             onClick={() => setIsMobileMenuOpen(true)} 
-            className="relative z-20 md:hidden p-2 -mr-2 text-zinc-400 hover:text-white transition-colors"
+            className="relative z-[100] md:hidden p-2 -mr-2 text-zinc-400 hover:text-white transition-colors"
           >
             <Menu className="w-6 h-6" />
           </button>
         </div>
       </header>
 
-      {/* Mobile Sidebar is OUTSIDE the sticky header */}
+      {/* Mobile Sidebar */}
       <div 
-        className={`fixed inset-0 bg-black/80 z-[60] backdrop-blur-sm transition-opacity duration-300 md:hidden ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-black/80 z-[110] backdrop-blur-sm transition-opacity duration-300 md:hidden ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={() => setIsMobileMenuOpen(false)}
       />
 
-      <div className={`fixed top-0 right-0 h-full w-80 max-w-[85vw] bg-zinc-950 border-l border-zinc-900 z-[70] transform transition-transform duration-300 ease-in-out md:hidden flex flex-col ${isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`fixed top-0 right-0 h-full w-80 max-w-[85vw] bg-zinc-950 border-l border-zinc-900 z-[120] transform transition-transform duration-300 ease-in-out md:hidden flex flex-col ${isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         
         <div className="p-5 flex items-center justify-between border-b border-zinc-900">
           <Link href="/" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center flex-shrink-0">
-            <img src="/logo.png" alt="Tixresale" className="w-24 h-10 object-contain scale-[1.8] origin-left" />
+            <img src="/logo.png" alt="Tixresale" className="w-24 h-10 object-contain scale-[1.8] origin-left pointer-events-none" />
           </Link>
           <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 -mr-2 text-zinc-400 hover:text-white transition-colors">
             <X className="w-6 h-6" />
@@ -189,17 +210,18 @@ export default function Navbar() {
             <div className="space-y-4">
               <p className="text-[10px] text-zinc-600 mb-2">Discover</p>
               <Link href="/explore" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Explore All</Link>
-              {/* 🛠 FIXED: Updated to URL Query parameters */}
               <Link href="/?category=Concerts" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Concerts</Link>
               <Link href="/?category=Festivals" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Festivals</Link>
             </div>
 
             <div className="space-y-4 pt-4 border-t border-zinc-900">
               <p className="text-[10px] text-zinc-600 mb-2">Top Cities</p>
-              {/* 🛠 FIXED: Updated to URL Query parameters */}
-              <Link href="/?city=London" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">London</Link>
-              <Link href="/?city=New+York" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">New York</Link>
-              <Link href="/?city=Paris" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Paris</Link>
+              {/* 🛠 FIXED: Expanded cities on mobile menu too */}
+              <div className="grid grid-cols-2 gap-4">
+                {CITIES.map((city) => (
+                  <Link key={city.name} href={`/?city=${city.query}`} onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">{city.name}</Link>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-4 pt-4 border-t border-zinc-900">
@@ -235,4 +257,4 @@ export default function Navbar() {
       </div>
     </>
   );
-      }
+                    }
