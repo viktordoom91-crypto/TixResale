@@ -3,6 +3,7 @@ import React, { Suspense } from 'react';
 import { prisma } from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import BuyTicketButton from '../../components/BuyTicketButton';
+import FormattedPrice from '../../components/FormattedPrice';
 import { MapPin, Calendar, ShieldCheck, Zap, Ticket, Clock, AlertTriangle, Hash } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -93,14 +94,15 @@ async function EventContent({ id }: { id: string }) {
 
   const uniqueSellers = Array.from(new Set(event.ticketBatches.map(b => b.seller.name)));
   const shuffledSellers = uniqueSellers.sort(() => 0.5 - Math.random()).slice(0, 4);
-  
-  const liveActivity = shuffledSellers.map((sellerName) => {
+
+  // 🛠 FIXED: Replaced individual seller names with "Verified Seller"
+  const liveActivity = shuffledSellers.map(() => {
     const randomBuyer = RANDOM_BUYERS[Math.floor(Math.random() * RANDOM_BUYERS.length)];
     return {
-      seller: sellerName,
+      seller: "Verified Seller",
       buyer: randomBuyer,
       time: `${Math.floor(Math.random() * 59) + 1} min ago`,
-      initial: sellerName[0]
+      initial: "V"
     };
   });
 
@@ -216,11 +218,13 @@ async function EventContent({ id }: { id: string }) {
                     
                     <div className="flex gap-4 sm:gap-5 mb-6 md:mb-0 w-full md:w-auto">
                       <div className="w-12 h-12 md:w-14 md:h-14 bg-zinc-950 rounded-full border border-zinc-800 flex items-center justify-center font-black text-lg md:text-xl text-white flex-shrink-0">
-                        {batch.seller.name[0]}
+                        {/* 🛠 FIXED: Use 'V' for Verified Seller */}
+                        V
                       </div>
                       <div className="overflow-hidden">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-black text-lg md:text-xl text-white leading-none truncate">{batch.seller.name}</h3>
+                          {/* 🛠 FIXED: Replaced seller name with Verified Seller */}
+                          <h3 className="font-black text-lg md:text-xl text-white leading-none truncate">Verified Seller</h3>
                           <ShieldCheck className="w-4 h-4 text-lime-400 flex-shrink-0" />
                         </div>
                         
@@ -246,12 +250,12 @@ async function EventContent({ id }: { id: string }) {
                     <div className="flex flex-col w-full md:w-auto md:items-end justify-between border-t border-zinc-800 md:border-t-0 pt-5 md:pt-0">
                       <div className="flex md:flex-col items-center md:items-end justify-between md:justify-start w-full mb-4 md:mb-4">
                         <span className="text-zinc-500 text-[10px] font-black uppercase tracking-widest block mb-0 md:mb-1">Price per ticket</span>
-                        <span className="font-black text-2xl md:text-3xl text-white tracking-tighter">₦{batch.price.toLocaleString()}</span>
+                        
+                        {/* 🛠 FIXED: Uses the dynamic currency formatter */}
+                        <FormattedPrice amount={batch.price} className="font-black text-2xl md:text-3xl text-white tracking-tighter" />
                       </div>
                       
                       <div className="w-full md:w-auto">
-                        {/* 🛠 FIXED: Removed the maxAvailable prop that the component doesn't know how to use */}
-                           {/* 🛠 FIXED: Using your real component! */}
                           <BuyTicketButton listingId={batch.id} price={batch.price} />
                       </div>
                     </div>
@@ -273,10 +277,9 @@ async function EventContent({ id }: { id: string }) {
 // ============================================================================
 export default async function EventDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  
   return (
     <Suspense fallback={<EventSkeleton />}>
       <EventContent id={id} />
     </Suspense>
   );
-}
+                }
