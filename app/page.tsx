@@ -5,7 +5,7 @@ import { useEffect, useState, Suspense, useMemo, FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldCheck, Zap, Tag, MapPin, Calendar, Music, Tent, Ticket, Trophy, Search, Loader2, Radar, CheckCircle2, TrendingUp, Star, Mail, SearchCheck, Mic, Percent, CreditCard } from 'lucide-react';
+import { ShieldCheck, Zap, Tag, MapPin, Calendar, Music, Tent, Ticket, Trophy, Search, Loader2, Radar, CheckCircle2, TrendingUp, Star, Mail, SearchCheck, Mic, Percent, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // 🛠 Import the dynamic currency formatter
 import { useCurrency } from './components/CurrencyProvider';
@@ -58,7 +58,11 @@ function HomeContent() {
   const [currentHero, setCurrentHero] = useState(0);
   const [rotation, setRotation] = useState(0);
   const [visibleLimit, setVisibleLimit] = useState(6);
+  
+  // 🚀 PAGINATION STATE FOR LARGE DATASETS
+  const [currentPage, setCurrentPage] = useState(1);
 
+  // Reset pagination to page 1 whenever search filters alter to capture full fresh tours
   useEffect(() => {
     if (keywordParam !== null) {
       setActiveKeyword(keywordParam);
@@ -70,7 +74,12 @@ function HomeContent() {
       setActiveKeyword('');
       setSearchInput('');
     }
+    setCurrentPage(1);
   }, [keywordParam, categoryParam]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeKeyword, activeCategory, cityParam]);
 
   const upcomingDates = useMemo(() => {
     const dates = [];
@@ -88,11 +97,12 @@ function HomeContent() {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     async function fetchStreamedEvents() {
       setLoading(true);
       setIsStreaming(true);
       
-      // 🛠 FIXED: Default to 'Global' if no city is specified to unlock worldwide queries
+      // Default to 'Global' if no city is specified to unlock worldwide queries
       setData({ events: [], count: 0, location: { city: cityParam || 'Global' } });
 
       try {
@@ -100,48 +110,63 @@ function HomeContent() {
         if (cityParam) apiUrl += `city=${encodeURIComponent(cityParam)}&`;
         if (activeKeyword) apiUrl += `keyword=${encodeURIComponent(activeKeyword)}&`;
         if (activeCategory !== 'All') apiUrl += `category=${encodeURIComponent(activeCategory)}&`;
+        apiUrl += `page=${currentPage}&limit=50`;
 
         const response = await fetch(apiUrl);
-        const reader = response.body?.getReader();
+        if (!response.body) return;
+
+        const reader = response.body.getReader();
         const decoder = new TextDecoder();
-
-        if (!reader) return;
-
         let accumulatedEvents: Event[] = [];
+        let streamBuffer = ''; // Buffer to solve mid-packet string splitting bugs
 
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n").filter(line => line.trim() !== "");
+          streamBuffer += decoder.decode(value, { stream: true });
+          const lines = streamBuffer.split("\n");
+          
+          // Retain the incomplete chunk component in buffer for next cycle assembly
+          streamBuffer = lines.pop() || '';
 
-          lines.forEach(line => {
+          for (const line of lines) {
+            if (line.trim() === "") continue;
             try {
               const newEvents = JSON.parse(line);
-              accumulatedEvents = [...accumulatedEvents, ...newEvents];
+              if (Array.isArray(newEvents)) {
+                accumulatedEvents = [...accumulatedEvents, ...newEvents];
+              } else {
+                accumulatedEvents.push(newEvents);
+              }
               
-              setData({
-                events: accumulatedEvents,
-                count: accumulatedEvents.length,
-                // 🛠 FIXED: Maintain 'Global' label during stream
-                location: { city: cityParam || 'Global' }
-              });
-              setLoading(false); 
-            } catch(e) { }
-          });
+              if (isMounted) {
+                setData({
+                  events: accumulatedEvents,
+                  count: accumulatedEvents.length,
+                  location: { city: cityParam || 'Global' }
+                });
+                setLoading(false); 
+              }
+            } catch(e) {
+              // Gracefully bypass line-fragments until loop catch matches completely
+            }
+          }
         }
       } catch (error) {
-        console.error('Streaming error:', error);
+        console.error('Streaming network error:', error);
       } finally {
-        setLoading(false);
-        setIsStreaming(false);
+        if (isMounted) {
+          setLoading(false);
+          setIsStreaming(false);
+        }
       }
     }
+    
     fetchStreamedEvents();
-  }, [cityParam, activeKeyword, activeCategory]);
+    return () => { isMounted = false; };
+  }, [cityParam, activeKeyword, activeCategory, currentPage]);
 
-  // 🛠 FIXED: currentCity defaults to Global
   const currentCity = data?.location?.city || cityParam || 'Global';
 
   const validEvents = useMemo(() => {
@@ -225,6 +250,7 @@ function HomeContent() {
     setActiveKeyword(searchInput);
     setActiveCategory('All'); 
     setActiveDate('Any');
+    setCurrentPage(1);
   };
 
   const activeHero = heroEvents[currentHero] || heroEvents[0];
@@ -484,7 +510,7 @@ function HomeContent() {
             )}
           </div>
 
-          {loading ? (
+          {loading && filteredEvents.length === 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((n) => (
                 <div key={n} className="h-[380px] bg-zinc-900/40 border border-zinc-800/50 rounded-3xl animate-pulse" />
@@ -497,48 +523,72 @@ function HomeContent() {
               <p className="text-zinc-500 font-medium text-sm">Try adjusting your dates or searching a different keyword.</p>
             </div>
           ) : (
-            <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              <AnimatePresence mode="popLayout">
-                {filteredEvents.slice(0, visibleLimit).map((event, index) => {
-                  const availableTickets = event.listings?.length || 0;
-                  const lowestPrice = availableTickets > 0 ? Math.min(...event.listings.map(l => l.price)) : 0;
+            <>
+              <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <AnimatePresence mode="popLayout">
+                  {filteredEvents.slice(0, visibleLimit).map((event, index) => {
+                    const availableTickets = event.listings?.length || 0;
+                    const lowestPrice = availableTickets > 0 ? Math.min(...event.listings.map(l => l.price)) : 0;
 
-                  return (
-                    <motion.div
-                      layout initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3 }}
-                      key={`${event.id}-${index}`} 
-                      className="group bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden hover:border-lime-500/50 transition-all flex flex-col cursor-pointer shadow-xl"
-                    >
-                      <div className="h-48 bg-zinc-950 overflow-hidden relative">
-                        <img src={event.imageUrl || ''} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 group-hover:opacity-80 transition-all duration-700 ease-in-out opacity-90 grayscale-[20%]" />
-                        <div className="absolute top-4 right-4 bg-zinc-950/90 backdrop-blur-md px-3 py-2 rounded-xl text-center border border-zinc-800">
-                          <div className="text-[10px] font-black text-lime-400 uppercase tracking-widest">{new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}</div>
-                          <div className="text-xl font-black leading-none text-white">{new Date(event.date).toLocaleDateString('en-US', { day: 'numeric' })}</div>
-                        </div>
-                      </div>
-
-                      <div className="p-6 flex flex-col flex-1">
-                        <h3 className="font-black text-xl text-white mb-2 line-clamp-2 leading-tight group-hover:text-lime-400 transition-colors uppercase tracking-tight">{event.title}</h3>
-                        <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold uppercase tracking-widest mb-6">
-                          <MapPin className="w-3.5 h-3.5 text-lime-500/50" /> {event.city}
-                        </div>
-                        
-                        <div className="mt-auto pt-4 border-t border-zinc-800/50 flex items-end justify-between">
-                          <div>
-                            <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Starting at</p>
-                            {/* 🛠 FIXED: Currency formatter replaces hardcoded Naira */}
-                            <p className="font-black text-2xl text-white tracking-tighter">{formatPrice(lowestPrice)}</p>
+                    return (
+                      <motion.div
+                        layout initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3 }}
+                        key={`${event.id}-${index}`} 
+                        className="group bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden hover:border-lime-500/50 transition-all flex flex-col cursor-pointer shadow-xl"
+                      >
+                        <div className="h-48 bg-zinc-950 overflow-hidden relative">
+                          <img src={event.imageUrl || ''} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 group-hover:opacity-80 transition-all duration-700 ease-in-out opacity-90 grayscale-[20%]" />
+                          <div className="absolute top-4 right-4 bg-zinc-950/90 backdrop-blur-md px-3 py-2 rounded-xl text-center border border-zinc-800">
+                            <div className="text-[10px] font-black text-lime-400 uppercase tracking-widest">{new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}</div>
+                            <div className="text-xl font-black leading-none text-white">{new Date(event.date).toLocaleDateString('en-US', { day: 'numeric' })}</div>
                           </div>
-                          <Link href={`/event/${event.id}`} className={`px-5 py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all ${availableTickets > 0 ? 'bg-white text-black hover:bg-lime-400 shadow-[0_0_15px_rgba(57,255,20,0.2)]' : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}>
-                            {availableTickets > 0 ? `Get Tickets` : 'Sold Out'}
-                          </Link>
                         </div>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </motion.div>
+
+                        <div className="p-6 flex flex-col flex-1">
+                          <h3 className="font-black text-xl text-white mb-2 line-clamp-2 leading-tight group-hover:text-lime-400 transition-colors uppercase tracking-tight">{event.title}</h3>
+                          <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold uppercase tracking-widest mb-6">
+                            <MapPin className="w-3.5 h-3.5 text-lime-500/50" /> {event.city}
+                          </div>
+                          
+                          <div className="mt-auto pt-4 border-t border-zinc-800/50 flex items-end justify-between">
+                            <div>
+                              <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Starting at</p>
+                              <p className="font-black text-2xl text-white tracking-tighter">{formatPrice(lowestPrice)}</p>
+                            </div>
+                            <Link href={`/event/${event.id}`} className={`px-5 py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all ${availableTickets > 0 ? 'bg-white text-black hover:bg-lime-400 shadow-[0_0_15px_rgba(57,255,20,0.2)]' : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}>
+                              {availableTickets > 0 ? `Get Tickets` : 'Sold Out'}
+                            </Link>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </motion.div>
+
+              {/* 🚀 PAGINATION CONTROLS (Appears if page > 1 or total event pool hits query thresholds) */}
+              {(filteredEvents.length >= 45 || currentPage > 1) && (
+                <div className="flex items-center justify-center gap-4 pt-12 border-t border-zinc-900 mt-12">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1 || isStreaming}
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl bg-zinc-900 border border-zinc-800 text-sm font-bold uppercase tracking-wider text-white hover:border-lime-400/50 disabled:opacity-40 disabled:hover:border-zinc-800 transition-all"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Prev
+                  </button>
+                  <span className="text-xs font-black uppercase tracking-widest text-zinc-500">
+                    Page <span className="text-lime-400">{currentPage}</span>
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => prev + 1)}
+                    disabled={filteredEvents.length < 30 || isStreaming}
+                    className="flex items-center gap-2 px-5 py-3 rounded-xl bg-zinc-900 border border-zinc-800 text-sm font-bold uppercase tracking-wider text-white hover:border-lime-400/50 disabled:opacity-40 disabled:hover:border-zinc-800 transition-all"
+                  >
+                    Next <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -712,4 +762,4 @@ export default function Home() {
       <HomeContent />
     </Suspense>
   );
-      }
+    }
