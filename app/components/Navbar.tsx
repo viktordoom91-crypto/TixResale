@@ -49,18 +49,18 @@ export default function Navbar() {
         <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between">
           
           {/* Left Side: Logo & Desktop Search */}
-          <div className="flex items-center md:gap-8 w-full md:w-auto">
+          <div className="flex items-center w-full md:w-auto">
             
-            {/* 🛠 FIXED: Forced logo to z-0 so it CANNOT block other elements */}
-            <Link href="/" className="flex items-center cursor-pointer group flex-shrink-0 mr-auto md:mr-6 relative z-0">
+            {/* 🛠 FIXED: Added heavy margin-right (mr-[60px] lg:mr-[140px]) to push the search bar away from the scaled logo */}
+            <Link href="/" className="flex items-center cursor-pointer group flex-shrink-0 relative z-0 mr-[60px] md:mr-[100px] lg:mr-[140px]">
               <img 
                 src="/logo.png" 
                 alt="Tixresale" 
-                className="w-44 md:w-52 h-10 md:h-12 object-contain flex-shrink-0 scale-[2] md:scale-[2.5] origin-left transition-transform pointer-events-none" 
+                className="w-32 md:w-44 lg:w-52 h-10 md:h-12 object-contain flex-shrink-0 scale-[1.8] md:scale-[2] lg:scale-[2.5] origin-left transition-transform pointer-events-none" 
               />
             </Link>
             
-            {/* 🛠 FIXED: Aggressive z-[100] so the search bar sits on top of the logo's invisible box */}
+            {/* Search Bar */}
             <form onSubmit={handleSearch} className="hidden lg:flex relative z-[100] bg-zinc-900 rounded-full items-center px-4 py-2.5 w-72 border border-zinc-800 focus-within:border-lime-500 focus-within:ring-1 focus-within:ring-lime-500 transition-all">
               <Search className="w-4 h-4 text-zinc-500 mr-3 pointer-events-none" />
               <input 
@@ -74,10 +74,10 @@ export default function Navbar() {
           </div>
 
           {/* Right Side: Desktop Navigation */}
-          {/* 🛠 FIXED: Aggressive z-[100] so all nav links sit on top of the logo's invisible box */}
-          <nav className="hidden md:flex relative z-[100] space-x-6 items-center text-[10px] lg:text-xs font-bold uppercase tracking-widest text-zinc-400">
+          <nav className="hidden md:flex relative z-[100] space-x-5 lg:space-x-6 items-center text-[10px] lg:text-xs font-bold uppercase tracking-widest text-zinc-400">
             
-            <Link href="/explore" className="hover:text-lime-400 transition-colors">Explore</Link>
+            {/* 🛠 FIXED: Explore points directly to "/" to reset to the global feed and added whitespace-nowrap */}
+            <Link href="/" className="hover:text-lime-400 transition-colors whitespace-nowrap">Explore All</Link>
             
             {/* Categories Dropdown */}
             <div className="relative group py-4">
@@ -96,7 +96,6 @@ export default function Navbar() {
               <button className="flex items-center gap-1 hover:text-lime-400 transition-colors">
                 Cities <ChevronDown className="w-3 h-3" />
               </button>
-              {/* 🛠 FIXED: Added max-h-80 and overflow-y-auto so the expanded list is scrollable! */}
               <div className="absolute top-full left-0 mt-0 w-48 max-h-80 overflow-y-auto hide-scrollbar bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
                 {CITIES.map((city, idx) => (
                   <Link 
@@ -136,20 +135,20 @@ export default function Navbar() {
                     <ShieldAlert className="w-4 h-4" /> Admin Console
                   </Link>
                 )}
-                <Link href="/dashboard" className="flex items-center gap-1.5 hover:text-white transition-colors">
+                <Link href="/dashboard" className="flex items-center gap-1.5 hover:text-white transition-colors whitespace-nowrap">
                   <User className="w-4 h-4" /> My Tickets
                 </Link>
-                <button onClick={() => signOut({ callbackUrl: '/' })} className="hover:text-zinc-200 transition-colors flex items-center gap-1.5">
+                <button onClick={() => signOut({ callbackUrl: '/' })} className="hover:text-zinc-200 transition-colors flex items-center gap-1.5 whitespace-nowrap">
                   <LogOut className="w-4 h-4" /> Exit
                 </button>
               </>
             ) : (
-              <Link href="/login" className="bg-white text-black px-4 py-2 rounded-full hover:bg-zinc-200 transition-colors">Sign in</Link>
+              // 🛠 FIXED: Prevent text wrapping and updated button styling
+              <Link href="/login" className="bg-white text-black px-5 py-2.5 rounded-full hover:bg-zinc-200 transition-colors whitespace-nowrap flex items-center justify-center font-black">Sign Up / In</Link>
             )}
           </nav>
 
           {/* Mobile Hamburger Button */}
-          {/* 🛠 FIXED: Aggressive z-[100] for mobile menu button */}
           <button 
             onClick={() => setIsMobileMenuOpen(true)} 
             className="relative z-[100] md:hidden p-2 -mr-2 text-zinc-400 hover:text-white transition-colors"
@@ -209,14 +208,14 @@ export default function Navbar() {
             
             <div className="space-y-4">
               <p className="text-[10px] text-zinc-600 mb-2">Discover</p>
-              <Link href="/explore" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Explore All</Link>
+              {/* 🛠 FIXED: Points to / for global reset */}
+              <Link href="/" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Explore All</Link>
               <Link href="/?category=Concerts" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Concerts</Link>
               <Link href="/?category=Festivals" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Festivals</Link>
             </div>
 
             <div className="space-y-4 pt-4 border-t border-zinc-900">
               <p className="text-[10px] text-zinc-600 mb-2">Top Cities</p>
-              {/* 🛠 FIXED: Expanded cities on mobile menu too */}
               <div className="grid grid-cols-2 gap-4">
                 {CITIES.map((city) => (
                   <Link key={city.name} href={`/?city=${city.query}`} onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">{city.name}</Link>
@@ -249,7 +248,7 @@ export default function Navbar() {
                   </button>
                 </>
               ) : (
-                <Link href="/login" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-white transition-colors">Sign in</Link>
+                <Link href="/login" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-white transition-colors">Sign Up / In</Link>
               )}
             </div>
           </nav>
@@ -257,4 +256,4 @@ export default function Navbar() {
       </div>
     </>
   );
-                    }
+}
