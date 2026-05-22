@@ -46,37 +46,37 @@ export default function Navbar() {
   return (
     <>
       <header className="bg-zinc-950 text-white sticky top-0 z-50 border-b border-zinc-900">
-        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between gap-4">
           
           {/* Left Side: Logo & Desktop Search */}
-          <div className="flex items-center w-full md:w-auto">
+          <div className="flex items-center gap-6 lg:gap-8 w-full md:w-auto">
             
-            {/* 🛠 FIXED: Added heavy margin-right (mr-[60px] lg:mr-[140px]) to push the search bar away from the scaled logo */}
-            <Link href="/" className="flex items-center cursor-pointer group flex-shrink-0 relative z-0 mr-[60px] md:mr-[100px] lg:mr-[140px]">
+            {/* 🛠 FIXED: Removed 'scale' and used real 'w-48 lg:w-56' width classes to fix the bounding box */}
+            <Link href="/" className="flex items-center cursor-pointer group flex-shrink-0 relative z-10">
               <img 
                 src="/logo.png" 
                 alt="Tixresale" 
-                className="w-32 md:w-44 lg:w-52 h-10 md:h-12 object-contain flex-shrink-0 scale-[1.8] md:scale-[2] lg:scale-[2.5] origin-left transition-transform pointer-events-none" 
+                className="w-36 md:w-48 lg:w-56 h-auto max-h-10 md:max-h-14 object-contain flex-shrink-0 pointer-events-none" 
               />
             </Link>
             
-            {/* Search Bar */}
-            <form onSubmit={handleSearch} className="hidden lg:flex relative z-[100] bg-zinc-900 rounded-full items-center px-4 py-2.5 w-72 border border-zinc-800 focus-within:border-lime-500 focus-within:ring-1 focus-within:ring-lime-500 transition-all">
+            {/* Search Bar - Flex width auto-adapts to screen size */}
+            <form onSubmit={handleSearch} className="hidden lg:flex relative z-[100] bg-zinc-900 rounded-full items-center px-4 py-2 w-56 xl:w-72 border border-zinc-800 focus-within:border-lime-500 focus-within:ring-1 focus-within:ring-lime-500 transition-all">
               <Search className="w-4 h-4 text-zinc-500 mr-3 pointer-events-none" />
               <input 
                 type="text" 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search events or artists..." 
-                className="bg-transparent outline-none w-full text-sm font-medium text-white placeholder-zinc-600"
+                placeholder="Search events..." 
+                className="bg-transparent outline-none w-full text-xs font-medium text-white placeholder-zinc-600"
               />
             </form>
           </div>
 
           {/* Right Side: Desktop Navigation */}
-          <nav className="hidden md:flex relative z-[100] space-x-5 lg:space-x-6 items-center text-[10px] lg:text-xs font-bold uppercase tracking-widest text-zinc-400">
+          {/* 🛠 FIXED: Replaced 'space-x' with 'gap-4 lg:gap-6' for perfectly distributed, responsive flexbox spacing */}
+          <nav className="hidden md:flex relative z-[100] gap-4 lg:gap-6 items-center text-[10px] lg:text-xs font-bold uppercase tracking-widest text-zinc-400">
             
-            {/* 🛠 FIXED: Explore points directly to "/" to reset to the global feed and added whitespace-nowrap */}
             <Link href="/" className="hover:text-lime-400 transition-colors whitespace-nowrap">Explore All</Link>
             
             {/* Categories Dropdown */}
@@ -131,7 +131,7 @@ export default function Navbar() {
             ) : session ? (
               <>
                 {(session.user as any)?.role === 'ADMIN' && (
-                  <Link href="/admin" className="text-lime-400 hover:text-lime-300 transition-colors flex items-center gap-1.5">
+                  <Link href="/admin" className="text-lime-400 hover:text-lime-300 transition-colors flex items-center gap-1.5 whitespace-nowrap">
                     <ShieldAlert className="w-4 h-4" /> Admin Console
                   </Link>
                 )}
@@ -143,7 +143,6 @@ export default function Navbar() {
                 </button>
               </>
             ) : (
-              // 🛠 FIXED: Prevent text wrapping and updated button styling
               <Link href="/login" className="bg-white text-black px-5 py-2.5 rounded-full hover:bg-zinc-200 transition-colors whitespace-nowrap flex items-center justify-center font-black">Sign Up / In</Link>
             )}
           </nav>
@@ -168,7 +167,8 @@ export default function Navbar() {
         
         <div className="p-5 flex items-center justify-between border-b border-zinc-900">
           <Link href="/" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center flex-shrink-0">
-            <img src="/logo.png" alt="Tixresale" className="w-24 h-10 object-contain scale-[1.8] origin-left pointer-events-none" />
+            {/* Mobile logo fixed to natural width as well */}
+            <img src="/logo.png" alt="Tixresale" className="w-32 h-auto object-contain pointer-events-none" />
           </Link>
           <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 -mr-2 text-zinc-400 hover:text-white transition-colors">
             <X className="w-6 h-6" />
@@ -208,7 +208,6 @@ export default function Navbar() {
             
             <div className="space-y-4">
               <p className="text-[10px] text-zinc-600 mb-2">Discover</p>
-              {/* 🛠 FIXED: Points to / for global reset */}
               <Link href="/" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Explore All</Link>
               <Link href="/?category=Concerts" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Concerts</Link>
               <Link href="/?category=Festivals" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-lime-400 transition-colors">Festivals</Link>
@@ -256,4 +255,4 @@ export default function Navbar() {
       </div>
     </>
   );
-}
+              }
