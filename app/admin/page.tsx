@@ -19,7 +19,8 @@ export default async function AdminDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-white uppercase">Platform Overview</h1>
-        <p className="text-zinc-500 font-medium mt-2">Welcome back to Salex Command. Here is live network data.</p>
+        {/* 🛠 FIXED: Updated branding from Salex to Tixresale */}
+        <p className="text-zinc-500 font-medium mt-2">Welcome back to Tixresale Command. Here is live network data.</p>
       </div>
 
       {/* Quick Stats Grid */}
@@ -98,4 +99,4 @@ export default async function AdminDashboard() {
 
     </div>
   );
-}
+            }
