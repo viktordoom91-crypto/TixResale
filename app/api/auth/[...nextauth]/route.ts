@@ -33,41 +33,45 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        // 🛠 Make sure you are pulling the user correctly from your DB here!
-        // Example for Prisma: 
-        // const user = await prisma.user.findUnique({ where: { email: credentials.email }});
-        // const passwordMatch = await bcrypt.compare(credentials.password, user.password);
-        
-        // MOCK USER (Replace with your actual database user fetching logic)
-        const user = { 
-          id: "1", 
-          name: "Admin User", 
-          email: credentials.email, 
-          role: "admin" // <-- This property MUST be returned by your DB
-        };
-
-        if (user) {
+        // 🚀 1. SUPER ADMIN CHECK (From your Vercel Environment Variables)
+        if (
+          credentials.email === process.env.ADMIN_EMAIL &&
+          credentials.password === process.env.ADMIN_PASSWORD
+        ) {
           return {
-            id: user.id.toString(),
-            name: user.name,
-            email: user.email,
-            role: user.role // Explicitly attach the role to the return object
+            id: "admin-1",
+            name: "Super Admin",
+            email: credentials.email,
+            role: "admin", // This is the golden ticket for your proxy.ts
           };
         }
 
-        return null;
+        // 🛠 2. STANDARD USER CHECK (Your normal database logic goes here)
+        // Example:
+        // const user = await prisma.user.findUnique({ where: { email: credentials.email } });
+        // const isValid = await bcrypt.compare(credentials.password, user.password);
+        // if (user && isValid) {
+        //   return {
+        //     id: user.id.toString(),
+        //     name: user.name,
+        //     email: user.email,
+        //     role: user.role || "user",
+        //   };
+        // }
+
+        return null; // Reject if neither admin nor standard user matched
       }
     })
   ],
   callbacks: {
-    // 🚀 FIX 1: Pass the role from your database user into the JWT Token
+    // Pass the role from the user object into the JWT Token
     async jwt({ token, user }) {
       if (user) {
         token.role = user.role;
       }
       return token;
     },
-    // 🚀 FIX 2: Expose the role from the token to the client-side session
+    // Expose the role from the token to the client-side session
     async session({ session, token }) {
       if (session.user) {
         session.user.role = token.role;
@@ -82,6 +86,7 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/login",
   },
+  // Ensure this is set in Vercel, otherwise the cookie cannot be read!
   secret: process.env.NEXTAUTH_SECRET,
 };
 
