@@ -1,9 +1,10 @@
-// middleware.ts (in your root directory, parallel to app/)
+// proxy.ts (in your root directory)
 import { getToken } from 'next-auth/jwt';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export async function middleware(req: NextRequest) {
+// 🚀 FIX: Renamed 'middleware' to 'proxy' and made it the default export to satisfy Next.js 16
+export default async function proxy(req: NextRequest) {
   // 1. Extract the NextAuth token directly from the request cookies
   const token = await getToken({ 
     req, 
@@ -18,7 +19,7 @@ export async function middleware(req: NextRequest) {
 
   // 3. Handle Admin Routing Security
   if (isAdminPath) {
-    // 🚀 FIX: Convert the DB role to lowercase so "Admin", "ADMIN", and "admin" all pass correctly.
+    // Convert the DB role to lowercase so "Admin", "ADMIN", and "admin" all pass correctly.
     if (!token || token.role?.toLowerCase() !== 'admin') {
       return NextResponse.redirect(new URL('/', req.url));
     }
