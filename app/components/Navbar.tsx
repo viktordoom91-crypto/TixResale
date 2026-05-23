@@ -51,7 +51,6 @@ export default function Navbar() {
           {/* Left Side: Logo & Desktop Search */}
           <div className="flex items-center gap-6 lg:gap-8 w-full md:w-auto">
             
-            {/* 🛠 FIXED: Removed 'scale' and used real 'w-48 lg:w-56' width classes to fix the bounding box */}
             <Link href="/" className="flex items-center cursor-pointer group flex-shrink-0 relative z-10">
               <img 
                 src="/logo.png" 
@@ -74,7 +73,6 @@ export default function Navbar() {
           </div>
 
           {/* Right Side: Desktop Navigation */}
-          {/* 🛠 FIXED: Replaced 'space-x' with 'gap-4 lg:gap-6' for perfectly distributed, responsive flexbox spacing */}
           <nav className="hidden md:flex relative z-[100] gap-4 lg:gap-6 items-center text-[10px] lg:text-xs font-bold uppercase tracking-widest text-zinc-400">
             
             <Link href="/" className="hover:text-lime-400 transition-colors whitespace-nowrap">Explore All</Link>
@@ -130,7 +128,8 @@ export default function Navbar() {
                <div className="w-20 h-4 bg-zinc-900 animate-pulse rounded-full"></div>
             ) : session ? (
               <>
-                {(session.user as any)?.role === 'ADMIN' && (
+                {/* 🚀 FIX: Case-insensitive check guarantees the Admin Console button shows up for admins */}
+                {(session.user as any)?.role?.toLowerCase() === 'admin' && (
                   <Link href="/admin" className="text-lime-400 hover:text-lime-300 transition-colors flex items-center gap-1.5 whitespace-nowrap">
                     <ShieldAlert className="w-4 h-4" /> Admin Console
                   </Link>
@@ -167,7 +166,6 @@ export default function Navbar() {
         
         <div className="p-5 flex items-center justify-between border-b border-zinc-900">
           <Link href="/" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center flex-shrink-0">
-            {/* Mobile logo fixed to natural width as well */}
             <img src="/logo.png" alt="Tixresale" className="w-32 h-auto object-contain pointer-events-none" />
           </Link>
           <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 -mr-2 text-zinc-400 hover:text-white transition-colors">
@@ -234,7 +232,8 @@ export default function Navbar() {
                 <div className="w-20 h-4 bg-zinc-900 animate-pulse rounded-full"></div>
               ) : session ? (
                 <>
-                 {(session.user as any)?.role === 'ADMIN' && (
+                 {/* 🚀 FIX: Apply the same case-insensitive role check to the mobile menu */}
+                 {(session.user as any)?.role?.toLowerCase() === 'admin' && (
                     <Link href="/admin" onClick={() => setIsMobileMenuOpen(false)} className="text-lime-400 hover:text-lime-300 transition-colors flex items-center gap-3">
                       <ShieldAlert className="w-5 h-5" /> Admin Console
                     </Link>
@@ -255,4 +254,4 @@ export default function Navbar() {
       </div>
     </>
   );
-              }
+                    }
