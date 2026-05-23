@@ -1,4 +1,4 @@
-// middleware.ts (or proxy.ts)
+// middleware.ts (in your root directory, parallel to app/)
 import { getToken } from 'next-auth/jwt';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
@@ -18,17 +18,15 @@ export async function middleware(req: NextRequest) {
 
   // 3. Handle Admin Routing Security
   if (isAdminPath) {
-    // If there is no token (not logged in) OR the token role is NOT 'admin'
-    // 🛠 Make sure the role string matches exactly what your DB outputs (e.g., 'admin' vs 'ADMIN')
-    if (!token || token.role !== 'admin') {
-      // Redirect unauthorized users to the homepage seamlessly
+    // 🚀 FIX: Convert the DB role to lowercase so "Admin", "ADMIN", and "admin" all pass correctly.
+    if (!token || token.role?.toLowerCase() !== 'admin') {
       return NextResponse.redirect(new URL('/', req.url));
     }
   }
 
-  // 4. (Optional) Prevent logged-in users from accessing the login page
+  // 4. Prevent logged-in admins from accessing the login page again
   if (isAuthPath && token) {
-    if (token.role === 'admin') {
+    if (token.role?.toLowerCase() === 'admin') {
       return NextResponse.redirect(new URL('/admin', req.url));
     }
     return NextResponse.redirect(new URL('/', req.url));
