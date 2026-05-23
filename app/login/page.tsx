@@ -31,8 +31,9 @@ export default function AuthPage() {
         setError('Invalid email or password.');
         setLoading(false);
       } else {
-        // 🚀 Sends EVERYONE to /admin. Middleware kicks standard users back to '/' seamlessly!
-        window.location.href = '/admin'; 
+        // 🚀 FIX: Refresh router state to register the new cookie, then route to admin
+        router.refresh();
+        router.push('/admin'); 
       }
     } else {
       const res = await fetch('/api/auth/signup', {
@@ -43,7 +44,9 @@ export default function AuthPage() {
       
       if (res.ok) {
         await signIn('credentials', { redirect: false, email: formData.email, password: formData.password });
-        window.location.href = '/admin';
+        // 🚀 FIX: Refresh router state to register the new cookie, then route to admin
+        router.refresh();
+        router.push('/admin');
       } else {
         const data = await res.json();
         setError(data.error || 'Failed to create account');
@@ -63,7 +66,6 @@ export default function AuthPage() {
 
           <div className="mb-8 text-center relative z-10">
             <Link href="/" className="inline-flex items-center justify-center w-full mb-6">
-              {/* 🛠 FIXED: Replaced "salex" text with the Tixresale logo image */}
               <img 
                 src="/logo.png" 
                 alt="Tixresale" 
@@ -74,7 +76,6 @@ export default function AuthPage() {
               {isLogin ? 'Welcome Back' : 'Create Account'}
             </h2>
             <p className="text-zinc-500 font-medium text-sm mt-2">
-              {/* 🛠 FIXED: Updated branding to Tixresale */}
               {isLogin ? 'Sign in to access your secure escrow tickets.' : 'Join Tixresale to buy and sell verified tickets.'}
             </p>
           </div>
@@ -113,8 +114,6 @@ export default function AuthPage() {
             </button>
           </form>
 
-          {/* 🛠 FIXED: Removed the "Or" divider and all Social Login buttons (Google, Apple, etc.) completely. Only Email & Password remains. */}
-
           <div className="pt-8 mt-8 border-t border-zinc-800 text-center relative z-10">
             <button type="button" onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-xs font-black uppercase tracking-widest text-zinc-500 hover:text-lime-400 transition">
               {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
@@ -125,4 +124,4 @@ export default function AuthPage() {
       </div>
     </div>
   );
-            }
+}
