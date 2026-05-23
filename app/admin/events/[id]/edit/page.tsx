@@ -206,4 +206,4 @@ export default async function EditEventPage({ params }: { params: { id: string }
 
     </div>
   );
-    }
+}
