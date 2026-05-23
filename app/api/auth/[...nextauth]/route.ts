@@ -33,20 +33,26 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        // 🛠 REPLACE THIS BLOCK WITH YOUR ACTUAL DATABASE CHECK
-        // Example: const user = await prisma.user.findUnique({ where: { email: credentials.email }});
+        // 🛠 Make sure you are pulling the user correctly from your DB here!
+        // Example for Prisma: 
+        // const user = await prisma.user.findUnique({ where: { email: credentials.email }});
+        // const passwordMatch = await bcrypt.compare(credentials.password, user.password);
         
-        // MOCK USER (Replace with real DB user data)
+        // MOCK USER (Replace with your actual database user fetching logic)
         const user = { 
           id: "1", 
           name: "Admin User", 
           email: credentials.email, 
-          role: "admin" // <-- Ensure your DB is returning this role!
+          role: "admin" // <-- This property MUST be returned by your DB
         };
 
-        // If credentials match and user exists
         if (user) {
-          return user;
+          return {
+            id: user.id.toString(),
+            name: user.name,
+            email: user.email,
+            role: user.role // Explicitly attach the role to the return object
+          };
         }
 
         return null;
