@@ -1,9 +1,9 @@
 // app/page.tsx
 'use client';
 
-import { useEffect, useState, Suspense, useMemo, FormEvent } from 'react';
+import { useEffect, useState, Suspense, useMemo, FormEvent, useCallback } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldCheck, Zap, Tag, MapPin, Calendar, Music, Tent, Ticket, Trophy, Search, Loader2, Radar, CheckCircle2, TrendingUp, Star, Mail, SearchCheck, Mic, Percent, CreditCard } from 'lucide-react';
 
@@ -727,4 +727,4 @@ export default function Home() {
       <HomeContent />
     </Suspense>
   );
-    }
+                                         }
