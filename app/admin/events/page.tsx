@@ -22,17 +22,17 @@ const EVENT_CATEGORIES = [
 async function updateEvent(formData: FormData) {
   'use server';
 
-  const id          = formData.get('eventId')   as string;
-  const title       = formData.get('title')      as string;
+  const id          = formData.get('eventId')    as string;
+  const title       = formData.get('title')       as string;
   const description = formData.get('description') as string;
-  const city        = formData.get('city')        as string;
-  const country     = formData.get('country')     as string;
-  const location    = formData.get('location')    as string;
-  const category    = formData.get('category')    as string;
-  const dateString  = formData.get('date')        as string;
-  const timeString  = formData.get('time')        as string;
+  const city        = formData.get('city')         as string;
+  const country     = formData.get('country')      as string;
+  const location    = formData.get('location')     as string;
+  const category    = formData.get('category')     as string;
+  const dateString  = formData.get('date')         as string;
+  const timeString  = formData.get('time')         as string;
   const basePrice   = parseFloat(formData.get('basePrice') as string);
-  const imageUrl    = formData.get('imageUrl')    as string;
+  const imageUrl    = formData.get('imageUrl')     as string;
 
   const combinedISO = dateString && timeString
     ? `${dateString}T${timeString}:00`
@@ -70,7 +70,6 @@ async function deleteEvent(formData: FormData) {
   redirect('/admin/events');
 }
 
-// Next.js 15+: params is a Promise
 export default async function EditEventPage({
   params,
 }: {
@@ -133,7 +132,6 @@ export default async function EditEventPage({
         </div>
       </header>
 
-      {/* Main */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-12">
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-10 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-lime-500/5 blur-[80px] rounded-full pointer-events-none" />
@@ -296,4 +294,4 @@ export default async function EditEventPage({
       </main>
     </div>
   );
-}
+                    }
