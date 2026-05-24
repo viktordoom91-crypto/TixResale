@@ -39,6 +39,8 @@ model Event {
   id            String        @id @default(auto()) @map("_id") @db.ObjectId
   title         String
   description   String
+  location      String?
+  category      String?
   date          DateTime
   city          String
   country       String
