@@ -8,6 +8,7 @@ import {
   Image as ImageIcon, FileText, DollarSign, Trash2,
   Clock, Layers,
 } from 'lucide-react';
+import DeleteEventButton from './DeleteEventButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,20 +125,7 @@ export default async function EditEventPage({
             </div>
           </div>
 
-          <form
-            action={deleteEvent}
-            onSubmit={(e) => {
-              if (!confirm('Permanently delete this event and all its tickets?')) e.preventDefault();
-            }}
-          >
-            <input type="hidden" name="eventId" value={event.id} />
-            <button
-              type="submit"
-              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500 hover:text-white transition-all text-xs font-black uppercase tracking-widest"
-            >
-              <Trash2 className="w-4 h-4" /> Delete
-            </button>
-          </form>
+          <DeleteEventButton eventId={event.id} deleteAction={deleteEvent} />
         </div>
       </header>
 
