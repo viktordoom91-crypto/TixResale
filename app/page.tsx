@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldCheck, Zap, Tag, MapPin, Calendar, Music, Tent, Ticket, Trophy, Search, Loader2, Radar, CheckCircle2, TrendingUp, Star, Mail, SearchCheck, Mic, Percent, CreditCard } from 'lucide-react';
 
-// ðŸ›  Import the dynamic currency formatter
+// 🛠 Import the dynamic currency formatter
 import { useCurrency } from './components/CurrencyProvider';
 
 // --- TYPES ---
@@ -92,7 +92,7 @@ function HomeContent() {
       setLoading(true);
       setIsStreaming(true);
       
-      // ðŸ›  FIXED: Default to 'Global' if no city is specified to unlock worldwide queries
+      // 🛠 FIXED: Default to 'Global' if no city is specified to unlock worldwide queries
       setData({ events: [], count: 0, location: { city: cityParam || 'Global' } });
 
       try {
@@ -118,16 +118,18 @@ function HomeContent() {
 
           lines.forEach(line => {
             try {
-              const newEvents = JSON.parse(line);
+              const parsed = JSON.parse(line);
+              // Skip the __meta packet the route sends as the first line
+              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.__meta) return;
+              const newEvents = parsed as Event[];
+              if (!Array.isArray(newEvents) || newEvents.length === 0) return;
               accumulatedEvents = [...accumulatedEvents, ...newEvents];
-              
               setData({
                 events: accumulatedEvents,
                 count: accumulatedEvents.length,
-                // ðŸ›  FIXED: Maintain 'Global' label during stream
                 location: { city: cityParam || 'Global' }
               });
-              setLoading(false); 
+              setLoading(false);
             } catch(e) { }
           });
         }
@@ -141,7 +143,7 @@ function HomeContent() {
     fetchStreamedEvents();
   }, [cityParam, activeKeyword, activeCategory]);
 
-  // ðŸ›  FIXED: currentCity defaults to Global
+  // 🛠 FIXED: currentCity defaults to Global
   const currentCity = data?.location?.city || cityParam || 'Global';
 
   const validEvents = useMemo(() => {
@@ -311,7 +313,7 @@ function HomeContent() {
           ))}
         </div>
 
-        {/* ðŸš€ DYNAMIC LIVE CHARTS (Trending & Top Artists) */}
+        {/* 🚀 DYNAMIC LIVE CHARTS (Trending & Top Artists) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 border-b border-zinc-900 pb-16">
           
           <div className="lg:col-span-7">
@@ -526,7 +528,7 @@ function HomeContent() {
                         <div className="mt-auto pt-4 border-t border-zinc-800/50 flex items-end justify-between">
                           <div>
                             <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Starting at</p>
-                            {/* ðŸ›  FIXED: Currency formatter replaces hardcoded Naira */}
+                            {/* 🛠 FIXED: Currency formatter replaces hardcoded Naira */}
                             <p className="font-black text-2xl text-white tracking-tighter">{formatPrice(lowestPrice)}</p>
                           </div>
                           <Link href={`/event/${event.id}`} className={`px-5 py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all ${availableTickets > 0 ? 'bg-white text-black hover:bg-lime-400 shadow-[0_0_15px_rgba(57,255,20,0.2)]' : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}>
@@ -571,7 +573,7 @@ function HomeContent() {
           }
         `}} />
 
-        {/* ðŸš€ THE TIXRESALE ADVANTAGE (Cards Section) */}
+        {/* 🚀 THE TIXRESALE ADVANTAGE (Cards Section) */}
         <div className="relative py-24 md:py-32 border border-zinc-800 bg-zinc-950 overflow-hidden mt-24 rounded-[3rem] shadow-2xl">
           <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
@@ -629,7 +631,7 @@ function HomeContent() {
           </div>
         </div>
 
-        {/* ðŸš€ WALL OF TEXT MARQUEE (Separated Section) */}
+        {/* 🚀 WALL OF TEXT MARQUEE (Separated Section) */}
         <div className="relative border border-zinc-800 bg-black overflow-hidden mt-8 rounded-[3rem] shadow-2xl py-12">
           <div className="flex flex-col justify-center pointer-events-none select-none overflow-hidden bg-black">
             {[...Array(6)].map((_, i) => (
@@ -642,7 +644,7 @@ function HomeContent() {
           </div>
         </div>
 
-        {/* ðŸš€ HOW TIXRESALE WORKS (4 Steps) */}
+        {/* 🚀 HOW TIXRESALE WORKS (4 Steps) */}
         <div className="pt-16 pb-8 border-t border-zinc-900 mt-8">
           <div className="text-center mb-12">
             <h2 className="text-sm font-black text-lime-400 uppercase tracking-[0.2em] mb-3">Escrow in 4 Steps</h2>
@@ -712,4 +714,4 @@ export default function Home() {
       <HomeContent />
     </Suspense>
   );
-        }
+  }
