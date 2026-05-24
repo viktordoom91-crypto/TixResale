@@ -20,23 +20,25 @@ async function rejectOrder(formData: FormData) {
   'use server';
   const orderId = formData.get('orderId') as string;
   const order = await prisma.order.findUnique({ where: { id: orderId } });
-  
+
   if (order) {
-    // 1. Cancel the order
-    // 2. Safely return the ticket to the batch so someone else can buy it
-    await prisma.$transaction([
-      prisma.order.update({
+    // 🛠 FIX: Replaced prisma.$transaction([...]) with the callback form.
+    //    MongoDB does NOT support the array/batch transaction syntax —
+    //    only relational DBs (Postgres, MySQL) do. The interactive
+    //    callback form works on both MongoDB and SQL.
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
         where: { id: orderId },
         data: { status: 'CANCELLED' }
-      }),
-      prisma.ticketBatch.update({
+      });
+      await tx.ticketBatch.update({
         where: { id: order.ticketBatchId },
-        data: { 
-          quantity: { increment: 1 }, 
-          ticketsSold: { decrement: 1 } 
+        data: {
+          quantity: { increment: 1 },
+          ticketsSold: { decrement: 1 }
         }
-      })
-    ]);
+      });
+    });
   }
   revalidatePath('/admin/orders');
 }
@@ -45,18 +47,18 @@ export default async function AdminOrdersPage() {
   const orders = await prisma.order.findMany({
     orderBy: { createdAt: 'desc' },
     include: {
-      ticketBatch: { 
-        include: { event: true, seller: true } 
+      ticketBatch: {
+        include: { event: true, seller: true }
       },
-      user: { 
-        select: { name: true, email: true } 
+      user: {
+        select: { name: true, email: true }
       }
     }
   });
 
   return (
     <div className="space-y-8">
-      
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -70,7 +72,7 @@ export default async function AdminOrdersPage() {
       {/* Orders Table */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl relative">
         <div className="absolute top-0 left-0 w-[600px] h-1 bg-gradient-to-r from-lime-400 to-transparent opacity-20" />
-        
+
         <div className="overflow-x-auto hide-scrollbar">
           <table className="w-full text-left border-collapse whitespace-nowrap min-w-[900px]">
             <thead>
@@ -95,14 +97,14 @@ export default async function AdminOrdersPage() {
                   const { ticketBatch, user } = order;
                   const { event } = ticketBatch;
 
-                  const isPending = order.status === 'PENDING';
+                  const isPending   = order.status === 'PENDING';
                   const isVerifying = order.status === 'VERIFYING';
-                  const isApproved = order.status === 'APPROVED';
+                  const isApproved  = order.status === 'APPROVED';
                   const isCancelled = order.status === 'CANCELLED';
 
                   return (
                     <tr key={order.id} className="hover:bg-zinc-800/30 transition-colors group">
-                      
+
                       {/* 1. Order ID */}
                       <td className="p-6">
                         <p className="font-mono text-xs font-bold text-white mb-1">#{order.id.slice(-8).toUpperCase()}</p>
@@ -140,19 +142,18 @@ export default async function AdminOrdersPage() {
                       {/* 5. Status & Receipt */}
                       <td className="p-6 space-y-2">
                         <div>
-                          {isPending && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1"><Clock className="w-3 h-3"/> Pending</span>}
+                          {isPending   && <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1"><Clock className="w-3 h-3"/> Pending</span>}
                           {isVerifying && <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1"><Clock className="w-3 h-3 animate-pulse"/> Verifying</span>}
-                          {isApproved && <span className="bg-lime-500/10 text-lime-400 border border-lime-500/20 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Paid</span>}
+                          {isApproved  && <span className="bg-lime-500/10 text-lime-400 border border-lime-500/20 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Paid</span>}
                           {isCancelled && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1"><XCircle className="w-3 h-3"/> Cancelled</span>}
                         </div>
-                        
-                        {/* 🛠 FIXED: Bypassed TypeScript check using (order as any) */}
+
                         {order.receiptUrl ? (
                           <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-300 transition">
                             <FileImage className="w-3 h-3" /> View Receipt
                           </a>
                         ) : (order as any).paymentMethod === 'Card2Crypto' ? (
-                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Crypto Gateway</p>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Crypto Gateway</p>
                         ) : (
                           <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600">No Receipt</p>
                         )}
@@ -190,4 +191,4 @@ export default async function AdminOrdersPage() {
       </div>
     </div>
   );
-}
+                        }
