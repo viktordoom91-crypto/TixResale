@@ -4,7 +4,7 @@ import { faker } from '@faker-js/faker';
 
 export const dynamic = 'force-dynamic';
 
-// ─── SYNC COOLDOWN ────────────────────────────────────────────────────────
+// ─── SYNC COOLDOWN ───────────────────────────────────────────────────────
 const syncCooldown = new Map<string, number>();
 const SYNC_TTL_MS  = 30 * 60 * 1000; // 30 minutes per unique query
 
@@ -12,6 +12,7 @@ function isSyncCoolingDown(key: string) {
   const last = syncCooldown.get(key);
   return !!last && Date.now() - last < SYNC_TTL_MS;
 }
+
 function markSynced(key: string) {
   syncCooldown.set(key, Date.now());
 }
@@ -53,7 +54,7 @@ async function getBotPool(): Promise<string[]> {
   return _botPoolCache;
 }
 
-// ─── CITY ALIAS MAP ───────────────────────────────────────────────────────
+// ─── CITY ALIAS MAP ──────────────────────────────────────────────────────
 const CITY_ALIASES: Record<string, string> = {
   'nyc': 'New York', 'ny': 'New York', 'new yok': 'New York', 'new yokr': 'New York',
   'la':  'Los Angeles', 'los angles': 'Los Angeles', 'los angelos': 'Los Angeles',
@@ -80,14 +81,47 @@ function normalizeCity(city: string | null): string | null {
   return CITY_ALIASES[lower] ?? city.trim();
 }
 
-// 🔥 FIX: Global Check Helper. Interprets global terms safely.
+// 🔥 FIX: Global City Check
 function isGlobalCity(city: string | null): boolean {
   if (!city) return true;
   const c = city.toLowerCase().trim();
   return ['global', 'all', 'any', 'worldwide'].includes(c);
 }
 
-// ─── FUZZY KEYWORD CORRECTION via TM Suggest ─────────────────────────────
+// 🔥 FIX: Global Intent Parser for Catch-All Queries
+function parseGlobalIntent(keyword: string | null, category: string | null) {
+  let resolvedKeyword = keyword?.trim() || null;
+  let resolvedCategory = category;
+
+  if (resolvedKeyword) {
+    const lowerKw = resolvedKeyword.toLowerCase();
+
+    // 1. All/Any Artists -> Strip keyword, force Concerts/Music category
+    if (['all artists', 'all artist', 'any artist', 'any artists', 'all music', 'any music'].includes(lowerKw)) {
+      resolvedKeyword = null; 
+      resolvedCategory = 'Concerts'; 
+    }
+    // 2. All/Any Sports -> Strip keyword, force Sports category
+    else if (['all sports', 'all sport', 'any sport', 'any sports', 'any sport event', 'all sport events'].includes(lowerKw)) {
+      resolvedKeyword = null;
+      resolvedCategory = 'Sports';
+    }
+    // 3. Specific Leagues -> Keep keyword, format cleanly, force Sports category
+    else {
+      const majorSports = ['nfl', 'nba', 'mlb', 'ufc', 'wwe', 'golf', 'tennis', 'f1', 'nhl', 'mls'];
+      if (majorSports.includes(lowerKw)) {
+        resolvedKeyword = ['golf', 'tennis'].includes(lowerKw) 
+          ? lowerKw.charAt(0).toUpperCase() + lowerKw.slice(1) 
+          : lowerKw.toUpperCase(); 
+        resolvedCategory = 'Sports';
+      }
+    }
+  }
+
+  return { intentKeyword: resolvedKeyword, intentCategory: resolvedCategory };
+}
+
+// ─── FUZZY KEYWORD CORRECTION ────────────────────────────────────────────
 async function correctKeyword(keyword: string, apiKey: string): Promise<string> {
   try {
     const url = `https://app.ticketmaster.com/discovery/v2/suggest?apikey=${apiKey}`
@@ -106,9 +140,9 @@ async function correctKeyword(keyword: string, apiKey: string): Promise<string> 
   }
 }
 
-// ─── FUZZY CITY CORRECTION via TM Suggest ────────────────────────────────
+// ─── FUZZY CITY CORRECTION ───────────────────────────────────────────────
 async function correctCity(city: string, apiKey: string): Promise<string> {
-  if (isGlobalCity(city)) return city; // Skip API correction if it's a global keyword
+  if (isGlobalCity(city)) return city; 
   try {
     const url = `https://app.ticketmaster.com/discovery/v2/suggest?apikey=${apiKey}`
               + `&keyword=${encodeURIComponent(city)}&resource=venues&size=1`;
@@ -129,26 +163,29 @@ export async function GET(request: Request) {
   const rawCategory = searchParams.get('category');
   const apiKey      = process.env.TICKETMASTER_API_KEY;
 
-  // ── 1. Correct inputs
+  // ── 1. Parse Global Catch-All Intents
+  const { intentKeyword, intentCategory } = parseGlobalIntent(rawKeyword, rawCategory);
+
+  // ── 2. Correct inputs
   const [resolvedKeyword, resolvedCity] = await Promise.all([
-    rawKeyword && apiKey
-      ? correctKeyword(rawKeyword, apiKey).catch(() => rawKeyword)
-      : Promise.resolve(rawKeyword),
+    intentKeyword && apiKey
+      ? correctKeyword(intentKeyword, apiKey).catch(() => intentKeyword)
+      : Promise.resolve(intentKeyword),
 
     rawCity && apiKey
       ? (async () => {
           const aliased = normalizeCity(rawCity);
-          if (aliased !== rawCity || isGlobalCity(aliased)) return aliased; 
+          if (aliased !== rawCity || isGlobalCity(aliased)) return aliased;
           return correctCity(rawCity, apiKey).catch(() => rawCity);
         })()
-      : Promise.resolve(normalizeCity(rawCity)),
+      : Promise.resolve(normalizeCity(rawCity))
   ]);
 
-  const keywordCorrected = !!rawKeyword  && resolvedKeyword !== rawKeyword;
-  const cityCorrected    = !!rawCity     && resolvedCity    !== rawCity;
-  const isGlobalQuery    = !resolvedKeyword && isGlobalCity(resolvedCity) && (!rawCategory || rawCategory === 'All');
+  const keywordCorrected = !!intentKeyword && resolvedKeyword !== intentKeyword;
+  const cityCorrected    = !!rawCity       && resolvedCity    !== rawCity;
+  const isGlobalQuery    = !resolvedKeyword && isGlobalCity(resolvedCity) && (!intentCategory || intentCategory === 'All');
 
-  // ── 2. Build DB WHERE clause ──────────────────────────────────────────
+  // ── 3. Build DB WHERE clause
   const andConditions: any[] = [];
 
   if (resolvedKeyword) {
@@ -156,57 +193,51 @@ export async function GET(request: Request) {
     const wordConditions = words.map(word => ({
       OR: [
         { title:       { contains: word, mode: 'insensitive' } },
-        { description: { contains: word, mode: 'insensitive' } }, // Artist fix lives here
+        { description: { contains: word, mode: 'insensitive' } }, // Artist search via description
         { city:        { contains: word, mode: 'insensitive' } },
-      ],
+      ]
     }));
     andConditions.push(...wordConditions);
   }
 
-  // 🔥 FIX: Added "Sport" support alongside "Sports"
-  if (rawCategory && rawCategory !== 'All') {
+  if (intentCategory && intentCategory !== 'All') {
     const catMap: Record<string, string> = {
       Concerts: 'Music', Theater: 'Theatre',
-      Comedy: 'Comedy', Sports: 'Sports', Sport: 'Sports', Festivals: 'Festival',
+      Comedy: 'Comedy', Sports: 'Sports', Sport: 'Sports', Festivals: 'Festival'
     };
-    const mapped = catMap[rawCategory] ?? rawCategory;
+    const mapped = catMap[intentCategory] ?? intentCategory;
     andConditions.push({
       OR: [
         { title:       { contains: mapped, mode: 'insensitive' } },
-        { description: { contains: mapped, mode: 'insensitive' } },
-      ],
+        { description: { contains: mapped, mode: 'insensitive' } }
+      ]
     });
   }
 
-  // 🔥 FIX: Global queries completely skip the city restriction
   if (resolvedCity && !isGlobalCity(resolvedCity)) {
     andConditions.push({ city: { contains: resolvedCity, mode: 'insensitive' } });
   }
 
   const dbQuery = andConditions.length > 0 ? { AND: andConditions } : {};
 
-  // ── 3. Initialize Bots
+  // ── 4. Initialize Bots
   getBotPool().catch(err => console.error('Bot pool warm failed:', err));
 
-  // ── 4. Sync Strategy ─────────────────────────────────────────────────
-  const syncKey = `${resolvedCity ?? 'global'}::${resolvedKeyword ?? ''}::${rawCategory ?? ''}`;
+  // ── 5. Sync Strategy
+  const syncKey = `${resolvedCity ?? 'global'}::${resolvedKeyword ?? ''}::${intentCategory ?? ''}`;
 
-  // 🔥 FIX: We ALWAYS await the Ticketmaster sync if it's not cooling down. 
-  // This guarantees that global queries pull real-time worldwide events 
-  // before ever returning a response to you.
   if (apiKey && !isSyncCoolingDown(syncKey)) {
     markSynced(syncKey);
-    await syncExternalEvents(resolvedCity, resolvedKeyword, rawCategory, apiKey).catch(console.error);
+    await syncExternalEvents(resolvedCity, resolvedKeyword, intentCategory, apiKey).catch(console.error);
   }
 
-  // Count exactly what we have after the mandatory TM Sync
   const finalCount = await prisma.event.count({ where: dbQuery });
 
-  // ── 5. Response headers ───────────────────────────────────────────────
+  // ── 6. Response headers
   const headers: Record<string, string> = {
     'Content-Type':  'application/x-ndjson',
     'Cache-Control': 'no-cache',
-    'Connection':    'keep-alive',
+    'Connection':    'keep-alive'
   };
   if (keywordCorrected && resolvedKeyword) {
     headers['X-Corrected-Keyword'] = resolvedKeyword;
@@ -216,7 +247,7 @@ export async function GET(request: Request) {
     headers['X-Corrected-City'] = resolvedCity;
   }
 
-  // ── 6. Stream ─────────────────────────────────────────────────────────
+  // ── 7. Stream
   const encoder   = new TextEncoder();
   const batchSize = 12;
 
@@ -228,11 +259,11 @@ export async function GET(request: Request) {
         query: {
           keyword:  resolvedKeyword  ?? null,
           city:     resolvedCity     ?? null,
-          category: rawCategory      ?? null,
+          category: intentCategory   ?? null,
           isGlobal: isGlobalQuery,
           correctedKeyword: keywordCorrected ? resolvedKeyword : null,
-          correctedCity:    cityCorrected    ? resolvedCity    : null,
-        },
+          correctedCity:    cityCorrected    ? resolvedCity    : null
+        }
       };
       controller.enqueue(encoder.encode(JSON.stringify(meta) + '\n'));
 
@@ -259,12 +290,12 @@ export async function GET(request: Request) {
                     select: { id: true, name: true, avatarUrl: true, isBot: true }
                   }
                 },
-                orderBy: { price: 'asc' },
-              },
+                orderBy: { price: 'asc' }
+              }
             },
             orderBy: [{ isFeatured: 'desc' }, { date: 'asc' }],
             take,
-            skip,
+            skip
           });
 
           if (batch.length === 0) {
@@ -277,8 +308,8 @@ export async function GET(request: Request) {
                 price:       tb.price,
                 quantity:    tb.quantity,
                 ticketsSold: tb.ticketsSold,
-                seller:      tb.seller,
-              })),
+                seller:      tb.seller
+              }))
             }));
 
             controller.enqueue(encoder.encode(JSON.stringify(formatted) + '\n'));
@@ -293,18 +324,18 @@ export async function GET(request: Request) {
       } finally {
         controller.close();
       }
-    },
+    }
   });
 
   return new Response(stream, { headers });
 }
 
-// ─── TICKETMASTER SYNC ────────────────────────────────────────────────────
+// ─── TICKETMASTER SYNC ───────────────────────────────────────────────────
 async function syncExternalEvents(
   targetCity: string | null,
   keyword:    string | null,
   category:   string | null,
-  apiKey:     string,
+  apiKey:     string
 ) {
   try {
     let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&size=100`;
@@ -313,18 +344,16 @@ async function syncExternalEvents(
       tmUrl += `&keyword=${encodeURIComponent(keyword)}`;
     }
     
-    // 🔥 FIX: Prevents passing "Global" to the TM API, allowing true worldwide search
     if (targetCity && !isGlobalCity(targetCity)) {
       tmUrl += `&city=${encodeURIComponent(targetCity)}`;
     }
 
     if (category && category !== 'All') {
-      // 🔥 FIX: Added 'Sport' mapped to TM's 'Sports' classification
       const catMap: Record<string, string> = {
         Concerts: 'Music', Theater: 'Arts & Theatre',
         Comedy:   'Comedy', Sports: 'Sports', Sport: 'Sports'
       };
-      
+     
       if (category === 'Festivals') {
         if (!keyword) tmUrl += `&keyword=Festival`;
       } else {
@@ -353,7 +382,7 @@ async function syncExternalEvents(
     const alreadyInDb = new Set(
       (await prisma.event.findMany({
         where:  { title: { in: candidateTitles } },
-        select: { title: true },
+        select: { title: true }
       })).map(e => e.title)
     );
 
@@ -383,8 +412,7 @@ async function syncExternalEvents(
         ? new Date(eventDateString)
         : new Date(Date.now() + 86_400_000 * 7);
 
-      // 🔥 FIX (ARTIST SEARCH): Extracts artist/attraction names directly from Ticketmaster
-      // and injects them into the database description so they can be searched later!
+      // Extracts artist/attraction names directly from Ticketmaster
       const attractions = extEvent._embedded?.attractions
         ?.map((a: any) => a.name)
         .join(', ');
@@ -400,8 +428,8 @@ async function syncExternalEvents(
           country:     'GLOBAL',
           basePrice,
           imageUrl,
-          isFeatured:  false,
-        },
+          isFeatured:  false
+        }
       });
 
       const numSellers   = Math.floor(Math.random() * 5) + 3;
@@ -412,8 +440,8 @@ async function syncExternalEvents(
           eventId:  newEvent.id,
           sellerId: botId,
           price:    basePrice,
-          quantity: Math.floor(Math.random() * 4) + 1,
-        })),
+          quantity: Math.floor(Math.random() * 4) + 1
+        }))
       });
 
       alreadyInDb.add(title);
@@ -421,4 +449,4 @@ async function syncExternalEvents(
   } catch (err) {
     console.error('TM Sync error:', err instanceof Error ? err.message : err);
   }
-                     }
+                             }
