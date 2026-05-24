@@ -20,24 +20,34 @@ export default function OrderRow({ order }: { order: any }) {
     setLoading(false);
   };
 
+  // 🛠 FIX: Destructure from ticketBatch (not the old 'listing' field)
+  const { ticketBatch, user } = order;
+  const { event } = ticketBatch;
+
   return (
     <tr className={`hover:bg-gray-50 transition-colors ${loading ? 'opacity-50' : ''}`}>
       <td className="p-5">
-        <p className="font-bold text-gray-900 line-clamp-1">{order.listing.event.title}</p>
+        {/* 🛠 FIX: was order.listing.event.title */}
+        <p className="font-bold text-gray-900 line-clamp-1">{event.title}</p>
         <p className="text-xs text-gray-500 font-medium font-mono mt-1">ID: {order.id.slice(-8)}</p>
       </td>
       <td className="p-5">
-        <p className="font-bold text-sm">{order.user?.name || 'Guest User'}</p>
-        <p className="text-xs text-gray-500">{order.user?.email || 'No email'}</p>
+        <p className="font-bold text-sm">{user?.name || 'Guest User'}</p>
+        <p className="text-xs text-gray-500">{user?.email || 'No email'}</p>
       </td>
-      <td className="p-5 font-black">₦{order.listing.price.toLocaleString()}</td>
+      {/* 🛠 FIX: was order.listing.price */}
+      <td className="p-5 font-black">₦{ticketBatch.price.toLocaleString()}</td>
       <td className="p-5">
         <span className={`px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1
-          ${order.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 
-            order.status === 'CANCELLED' ? 'bg-red-100 text-red-700' : 
+          ${order.status === 'APPROVED'   ? 'bg-green-100 text-green-700'  :
+            order.status === 'CANCELLED'  ? 'bg-red-100 text-red-700'      :
+            order.status === 'VERIFYING'  ? 'bg-blue-100 text-blue-700'    :
             'bg-orange-100 text-orange-700'}`}>
-          {order.status === 'PENDING' && <Clock className="w-3 h-3" />}
-          {order.status === 'APPROVED' && <CheckCircle className="w-3 h-3" />}
+          {/* 🛠 FIX: Added VERIFYING status icon (was missing) */}
+          {order.status === 'PENDING'    && <Clock className="w-3 h-3" />}
+          {order.status === 'VERIFYING'  && <Clock className="w-3 h-3 animate-pulse" />}
+          {order.status === 'APPROVED'   && <CheckCircle className="w-3 h-3" />}
+          {order.status === 'CANCELLED'  && <XCircle className="w-3 h-3" />}
           {order.status}
         </span>
       </td>
