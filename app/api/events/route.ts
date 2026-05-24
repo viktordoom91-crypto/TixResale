@@ -561,10 +561,10 @@ async function syncExternalEvents(
       // Use TM price when available; fall back to a sensible default by segment
       // (Many TM events — especially UK/EU and major artists — omit priceRanges entirely)
       const priceMin = extEvent.priceRanges?.[0]?.min;
-      const segment  = extEvent.classifications?.[0]?.segment?.name?.toLowerCase() ?? '';
-      const fallback = segment.includes('sport') ? 65
-                     : segment.includes('music') ? 75
-                     : segment.includes('arts')  ? 45
+      const priceSegment = extEvent.classifications?.[0]?.segment?.name?.toLowerCase() ?? '';
+      const fallback = priceSegment.includes('sport') ? 65
+                     : priceSegment.includes('music') ? 75
+                     : priceSegment.includes('arts')  ? 45
                      : 50;
       const basePrice = priceMin != null ? Number(Number(priceMin).toFixed(2)) : fallback;
       const venue      = extEvent._embedded?.venues?.[0];
@@ -630,4 +630,4 @@ async function syncExternalEvents(
   } catch (err) {
     console.error('TM Sync error:', err instanceof Error ? err.message : err);
   }
-  }
+    }
