@@ -98,6 +98,7 @@ async function correctKeyword(keyword: string, apiKey: string): Promise<string> 
       json._embedded?.attractions?.[0]?.name ||
       json._embedded?.events?.[0]?.name;
     if (!suggestion) return keyword;
+    
     // Accept correction only if it shares the first 4 chars (avoids unrelated results)
     const similar = suggestion.toLowerCase().startsWith(keyword.toLowerCase().slice(0, 4));
     return similar ? suggestion : keyword;
@@ -145,7 +146,7 @@ export async function GET(request: Request) {
 
   const keywordCorrected = !!rawKeyword  && resolvedKeyword !== rawKeyword;
   const cityCorrected    = !!rawCity     && resolvedCity    !== rawCity;
-  const isGlobalQuery    = !resolvedKeyword && !resolvedCity && !rawCategory;
+  const isGlobalQuery    = !resolvedKeyword && !resolvedCity && (!rawCategory || rawCategory === 'All');
 
   // ── 2. Build DB WHERE clause ──────────────────────────────────────────
   const andConditions: any[] = [];
@@ -176,8 +177,8 @@ export async function GET(request: Request) {
     });
   }
 
-  // City filter: case-insensitive phrase matching (not strict equality)
-  if (resolvedCity && !resolvedKeyword) {
+  // 🛠 FIX: Stack city filter unconditionally if it exists
+  if (resolvedCity) {
     andConditions.push({ city: { contains: resolvedCity, mode: 'insensitive' } });
   }
 
@@ -312,25 +313,41 @@ async function syncExternalEvents(
   apiKey:     string,
 ) {
   try {
-    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}`;
+    // 🛠 FIX: Use URLSearchParams to safely stack multiple parameters concurrently
+    const params = new URLSearchParams({
+      apikey: apiKey,
+      size: '50'
+    });
 
+    // ── Keyword Injection ──
     if (keyword) {
-      tmUrl += `&keyword=${encodeURIComponent(keyword)}&size=50&sort=date,asc`;
-    } else if (category && category !== 'All') {
+      params.append('keyword', keyword);
+    } else if (category === 'Festivals') {
+      params.append('keyword', 'Festival');
+    }
+
+    // ── Category Injection ──
+    if (category && category !== 'All' && category !== 'Festivals') {
       const catMap: Record<string, string> = {
         Concerts: 'Music', Theater: 'Arts & Theatre',
         Comedy:   'Comedy', Sports: 'Sports',
       };
-      if (category === 'Festivals') {
-        tmUrl += `&keyword=Festival&size=50&sort=date,asc`;
-      } else {
-        tmUrl += `&classificationName=${encodeURIComponent(catMap[category] ?? category)}&size=50&sort=date,asc`;
-      }
-    } else if (targetCity) {
-      tmUrl += `&city=${encodeURIComponent(targetCity)}&size=50&sort=date,asc`;
-    } else {
-      tmUrl += `&size=50&sort=relevance,desc`;
+      params.append('classificationName', catMap[category] ?? category);
     }
+
+    // ── City Injection ──
+    if (targetCity) {
+      params.append('city', targetCity);
+    }
+
+    // ── Sort Strategy ──
+    if (!keyword && !targetCity && (!category || category === 'All')) {
+      params.append('sort', 'relevance,desc'); // Global catch-all
+    } else {
+      params.append('sort', 'date,asc'); // Specific targeted query
+    }
+
+    const tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?${params.toString()}`;
 
     const res = await fetch(tmUrl, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return;
@@ -417,4 +434,4 @@ async function syncExternalEvents(
   } catch (err) {
     console.error('TM Sync error:', err instanceof Error ? err.message : err);
   }
-                              }
+                                                                 }
