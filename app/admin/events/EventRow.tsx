@@ -3,138 +3,119 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Calendar, MapPin, Ticket, Flame, Edit } from 'lucide-react';
 import Link from 'next/link';
-import { Calendar, MapPin, Ticket, Flame, Edit, Trash2, Image as ImageIcon } from 'lucide-react';
 
 export default function EventRow({ event }: { event: any }) {
   const router = useRouter();
   const [isFeatured, setIsFeatured] = useState(event.isFeatured);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const toggleFeatured = async () => {
     setIsUpdating(true);
     const newStatus = !isFeatured;
-    setIsFeatured(newStatus); 
+    setIsFeatured(newStatus);
 
     try {
       await fetch(`/api/admin/events/${event.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isFeatured: newStatus })
+        body: JSON.stringify({ isFeatured: newStatus }),
       });
-      router.refresh(); 
+      router.refresh();
     } catch (error) {
       console.error(error);
-      setIsFeatured(!newStatus); 
+      setIsFeatured(!newStatus);
     } finally {
       setIsUpdating(false);
     }
   };
 
-  const deleteEvent = async () => {
-    if (!window.confirm("Are you sure you want to permanently delete this event?")) return;
-    
-    setIsDeleting(true);
-    try {
-      await fetch(`/api/admin/events/${event.id}`, { method: 'DELETE' });
-      router.refresh();
-    } catch (error) {
-      console.error("Failed to delete", error);
-      setIsDeleting(false);
-    }
-  };
-
-  // Gracefully handle ticket count whether it uses 'listings' or 'ticketBatches'
-  const ticketCount = event._count?.ticketBatches || event._count?.listings || 0;
-
-  if (isDeleting) return null; // Hide row immediately upon successful delete
-
   return (
-    <tr className={`hover:bg-zinc-800/20 transition-colors group border-b border-zinc-800 ${isUpdating ? 'opacity-75' : ''} ${isFeatured ? 'bg-lime-500/5' : ''}`}>
-      
-      {/* 1. Event Info */}
-      <td className="p-6">
+    <tr className={`hover:bg-gray-50 transition-colors ${isUpdating ? 'opacity-75' : ''}`}>
+
+      {/* Event Info */}
+      <td className="p-5">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-zinc-800 overflow-hidden flex-shrink-0 flex items-center justify-center border border-zinc-700">
-            {event.imageUrl ? (
-              <img src={event.imageUrl} alt={event.title} className="w-full h-full object-cover grayscale-[20%]" />
-            ) : (
-              <ImageIcon className="w-5 h-5 text-zinc-600" />
-            )}
-          </div>
+          <img
+            src={event.imageUrl || 'https://via.placeholder.com/150'}
+            alt={event.title}
+            className="w-16 h-16 rounded-xl object-cover bg-gray-100 border border-gray-200"
+          />
           <div>
-            <p className="font-black text-sm text-white line-clamp-1 uppercase tracking-tight">{event.title}</p>
+            <p className="font-black text-gray-900 line-clamp-1 max-w-[250px]">{event.title}</p>
             <div className="flex items-center gap-2 mt-1">
-              <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${event.isManual ? 'bg-lime-400/10 text-lime-400' : 'bg-blue-400/10 text-blue-400'}`}>
+              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
                 {event.isManual ? 'Manual' : 'API'}
               </span>
-              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">ID: {event.id.slice(-6)}</p>
+              <p className="text-xs text-gray-500 font-medium font-mono">ID: {event.id.slice(-6)}</p>
             </div>
           </div>
         </div>
       </td>
 
-      {/* 2. Location & Date */}
-      <td className="p-6 space-y-1">
-        <div className="flex items-center text-xs font-bold text-zinc-300">
-          <MapPin className="w-3.5 h-3.5 mr-2 text-lime-400/70" /> {event.city}
-        </div>
-        <div className="flex items-center text-xs font-bold text-zinc-500">
-          <Calendar className="w-3.5 h-3.5 mr-2 text-zinc-600" /> 
-          {new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+      {/* Location & Date */}
+      <td className="p-5">
+        <div className="space-y-1">
+          <p className="text-sm font-bold flex items-center gap-1.5 text-gray-700">
+            <MapPin className="w-3.5 h-3.5 text-gray-400" /> {event.city}
+          </p>
+          <p className="text-xs font-medium flex items-center gap-1.5 text-gray-500">
+            <Calendar className="w-3.5 h-3.5 text-gray-400" />
+            {new Date(event.date).toLocaleDateString('en-US', {
+              month: 'short', day: 'numeric', year: 'numeric',
+            })}
+          </p>
         </div>
       </td>
 
-      {/* 3. Inventory */}
-      <td className="p-6">
-        <span className="bg-zinc-950 border border-zinc-800 text-zinc-300 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest inline-flex items-center gap-2">
-          <Ticket className="w-3.5 h-3.5 text-lime-400" />
-          {ticketCount} Tickets
-        </span>
+      {/* Inventory & Pricing */}
+      <td className="p-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500">
+            <Ticket className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="font-black text-lg text-gray-900 leading-tight">{event._count.listings}</p>
+            <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400">Tickets</p>
+          </div>
+        </div>
       </td>
 
-      {/* 4. Actions (Featured Toggle, Edit, Delete) */}
-      <td className="p-6">
-        <div className="flex items-center justify-end gap-4">
-          
-          {/* Featured Toggle */}
-          <button 
+      {/* Featured Toggle */}
+      <td className="p-5">
+        <div className="flex justify-center">
+          <button
             onClick={toggleFeatured}
             disabled={isUpdating}
-            className={`relative flex items-center justify-between w-16 h-7 rounded-full p-1 transition-all duration-300 border ${
-              isFeatured ? 'bg-lime-400/20 border-lime-400/50' : 'bg-zinc-900 border-zinc-700 hover:bg-zinc-800'
+            className={`relative flex items-center justify-between w-20 h-8 rounded-full p-1 transition-all duration-300 ${
+              isFeatured
+                ? 'bg-orange-100 border border-orange-200'
+                : 'bg-gray-100 border border-gray-200 hover:bg-gray-200'
             }`}
           >
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center transform transition-transform duration-300 ${
-              isFeatured ? 'translate-x-9 bg-lime-400 shadow-[0_0_10px_rgba(57,255,20,0.5)]' : 'translate-x-0 bg-zinc-600'
+            <span className={`absolute left-2.5 text-[10px] font-black uppercase tracking-wider transition-opacity ${isFeatured ? 'opacity-100 text-orange-600' : 'opacity-0'}`}>
+              Hot
+            </span>
+            <div className={`w-6 h-6 rounded-full shadow-sm flex items-center justify-center transform transition-transform duration-300 ${
+              isFeatured ? 'translate-x-12 bg-orange-500' : 'translate-x-0 bg-white'
             }`}>
-              {isFeatured && <Flame className="w-3 h-3 text-black fill-current" />}
+              {isFeatured && <Flame className="w-3 h-3 text-white fill-current" />}
             </div>
           </button>
-
-          <div className="w-px h-6 bg-zinc-800 mx-2"></div>
-
-          {/* Edit Button */}
-          <Link 
-            href={`/admin/events/${event.id}/edit`} 
-            className="p-2 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:border-lime-500/50 hover:text-lime-400 rounded-lg transition-all"
-            title="Edit Event"
-          >
-            <Edit className="w-4 h-4" />
-          </Link>
-
-          {/* Delete Button */}
-          <button 
-            onClick={deleteEvent}
-            className="p-2 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-all"
-            title="Delete Event"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-
         </div>
       </td>
+
+      {/* Edit Button */}
+      <td className="p-5 text-right">
+        <Link
+          href={`/admin/events/${event.id}/edit`}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 border border-gray-200 hover:border-indigo-200 text-gray-600 rounded-xl text-xs font-black uppercase tracking-widest transition-all"
+        >
+          <Edit className="w-3.5 h-3.5" /> Edit
+        </Link>
+      </td>
+
     </tr>
   );
-          }
+}
