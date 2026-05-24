@@ -140,20 +140,23 @@ export async function GET(request: Request) {
 
   const keywordCorrected = !!rawKeyword  && resolvedKeyword !== rawKeyword;
   const cityCorrected    = !!rawCity     && resolvedCity    !== rawCity;
-  const isGlobalQuery    = !resolvedKeyword && !resolvedCity && !rawCategory;
+  const isGlobalQuery    = !resolvedKeyword && (!resolvedCity || resolvedCity.toLowerCase() === 'global') && (!rawCategory || rawCategory === 'All');
 
   // ── 2. Build DB WHERE clause ──────────────────────────────────────────
   const andConditions: any[] = [];
 
   if (resolvedKeyword) {
+    // 🔥 FIX: Deep search enforcement. Splits multiple words into an array and demands an AND 
+    // overlap of OR conditions to strictly filter out unrelated generic matches.
     const words = resolvedKeyword.trim().split(/\s+/).filter(Boolean);
-    andConditions.push({
-      OR: words.flatMap(word => [
+    const wordConditions = words.map(word => ({
+      OR: [
         { title:       { contains: word, mode: 'insensitive' } },
         { description: { contains: word, mode: 'insensitive' } },
         { city:        { contains: word, mode: 'insensitive' } },
-      ]),
-    });
+      ],
+    }));
+    andConditions.push(...wordConditions);
   }
 
   if (rawCategory && rawCategory !== 'All') {
@@ -170,18 +173,15 @@ export async function GET(request: Request) {
     });
   }
 
-  // City filter: only applied when there's no keyword (keyword already scans city field)
-  if (resolvedCity && !resolvedKeyword) {
+  // 🔥 FIX: City filter applied if explicitly provided, ensuring precise geographic searches
+  if (resolvedCity && resolvedCity.toLowerCase() !== 'global') {
     andConditions.push({ city: { contains: resolvedCity, mode: 'insensitive' } });
   }
 
-  // 🛠 FIX: Global query (no filters at all) must use an EMPTY where clause
-  //    so it returns ALL events in the database, not zero.
+  // Global query (no filters at all) uses an EMPTY where clause to return ALL events in the DB
   const dbQuery = andConditions.length > 0 ? { AND: andConditions } : {};
 
   // ── 3. Count existing events — bot pool warmed independently (not on critical path)
-  //    🛠 FIX: getBotPool() was inside Promise.all, so a pool failure killed
-  //    the entire handler. Now it's fire-and-forget — never blocks the response.
   getBotPool().catch(err => console.error('Bot pool warm failed:', err));
   const existingCount = await prisma.event.count({ where: dbQuery });
 
@@ -225,9 +225,6 @@ export async function GET(request: Request) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      // 🛠 NEW: First line is always a __meta frame so the frontend can
-      //    immediately know the total count and show a proper empty state
-      //    rather than waiting for the stream to close.
       const meta = {
         __meta: true,
         total:  finalCount,
@@ -322,25 +319,39 @@ async function syncExternalEvents(
   apiKey:     string,
 ) {
   try {
-    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}`;
+    // 🔥 FIX: Deep Search URL Builder.
+    // Instead of an IF/ELSE flow that overrides fields, we chain them together.
+    // We also increase size to 100 for a much richer discovery pool.
+    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&size=100`;
 
     if (keyword) {
-      tmUrl += `&keyword=${encodeURIComponent(keyword)}&size=50&sort=date,asc`;
-    } else if (category && category !== 'All') {
+      tmUrl += `&keyword=${encodeURIComponent(keyword)}`;
+    }
+    
+    if (targetCity && targetCity.toLowerCase() !== 'global') {
+      tmUrl += `&city=${encodeURIComponent(targetCity)}`;
+    }
+
+    if (category && category !== 'All') {
       const catMap: Record<string, string> = {
         Concerts: 'Music', Theater: 'Arts & Theatre',
         Comedy:   'Comedy', Sports: 'Sports',
       };
+      
       if (category === 'Festivals') {
-        tmUrl += `&keyword=Festival&size=50&sort=date,asc`;
+        if (!keyword) tmUrl += `&keyword=Festival`;
       } else {
-        tmUrl += `&classificationName=${encodeURIComponent(catMap[category] ?? category)}&size=50&sort=date,asc`;
+        tmUrl += `&classificationName=${encodeURIComponent(catMap[category] ?? category)}`;
       }
-    } else if (targetCity) {
-      tmUrl += `&city=${encodeURIComponent(targetCity)}&size=50&sort=date,asc`;
+    }
+
+    // 🔥 FIX: Default discovery + deeper matches.
+    // Use relevance ranking over standard date ranking if discovering globally or using a keyword. 
+    // This fetches top-tier tours / events rather than random garage bands playing tomorrow.
+    if (keyword || (!targetCity && (!category || category === 'All'))) {
+      tmUrl += `&sort=relevance,desc`;
     } else {
-      // 🛠 Global default: fetch top worldwide events — no location filter
-      tmUrl += `&size=50&sort=relevance,desc`;
+      tmUrl += `&sort=date,asc`;
     }
 
     const res = await fetch(tmUrl, { signal: AbortSignal.timeout(15000) });
@@ -380,7 +391,7 @@ async function syncExternalEvents(
       const basePrice   = Number(Number(priceRange.min).toFixed(2));
       const catName     = extEvent.classifications?.[0]?.segment?.name || 'Live Event';
       const actualCity  = extEvent._embedded?.venues?.[0]?.city?.name  || targetCity || 'Global';
-      const venueName   = extEvent._embedded?.venues?.[0]?.name         || 'TBA';
+      const venueName   = extEvent._embedded?.venues?.[0]?.name        || 'TBA';
       const imageUrl    =
         extEvent.images?.find((img: any) => img.ratio === '16_9' && img.width >= 1024)?.url ||
         extEvent.images?.[0]?.url ||
@@ -421,4 +432,4 @@ async function syncExternalEvents(
   } catch (err) {
     console.error('TM Sync error:', err instanceof Error ? err.message : err);
   }
-}
+      }
