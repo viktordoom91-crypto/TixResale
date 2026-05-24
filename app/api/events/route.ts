@@ -17,7 +17,6 @@ function markSynced(key: string) {
 }
 
 // ─── BOT SELLER POOL ─────────────────────────────────────────────────────
-// 40 shared bots reused across all events — zero new seller docs per sync.
 const BOT_POOL_SIZE = 40;
 let _botPoolCache: string[] | null = null;
 
@@ -81,6 +80,13 @@ function normalizeCity(city: string | null): string | null {
   return CITY_ALIASES[lower] ?? city.trim();
 }
 
+// 🔥 FIX: Global Check Helper. Interprets global terms safely.
+function isGlobalCity(city: string | null): boolean {
+  if (!city) return true;
+  const c = city.toLowerCase().trim();
+  return ['global', 'all', 'any', 'worldwide'].includes(c);
+}
+
 // ─── FUZZY KEYWORD CORRECTION via TM Suggest ─────────────────────────────
 async function correctKeyword(keyword: string, apiKey: string): Promise<string> {
   try {
@@ -93,7 +99,6 @@ async function correctKeyword(keyword: string, apiKey: string): Promise<string> 
       json._embedded?.attractions?.[0]?.name ||
       json._embedded?.events?.[0]?.name;
     if (!suggestion) return keyword;
-    // Accept correction only if it shares the first 4 chars (avoids unrelated results)
     const similar = suggestion.toLowerCase().startsWith(keyword.toLowerCase().slice(0, 4));
     return similar ? suggestion : keyword;
   } catch {
@@ -103,6 +108,7 @@ async function correctKeyword(keyword: string, apiKey: string): Promise<string> 
 
 // ─── FUZZY CITY CORRECTION via TM Suggest ────────────────────────────────
 async function correctCity(city: string, apiKey: string): Promise<string> {
+  if (isGlobalCity(city)) return city; // Skip API correction if it's a global keyword
   try {
     const url = `https://app.ticketmaster.com/discovery/v2/suggest?apikey=${apiKey}`
               + `&keyword=${encodeURIComponent(city)}&resource=venues&size=1`;
@@ -123,7 +129,7 @@ export async function GET(request: Request) {
   const rawCategory = searchParams.get('category');
   const apiKey      = process.env.TICKETMASTER_API_KEY;
 
-  // ── 1. Correct inputs in parallel (non-blocking — failures fall back safely)
+  // ── 1. Correct inputs
   const [resolvedKeyword, resolvedCity] = await Promise.all([
     rawKeyword && apiKey
       ? correctKeyword(rawKeyword, apiKey).catch(() => rawKeyword)
@@ -132,7 +138,7 @@ export async function GET(request: Request) {
     rawCity && apiKey
       ? (async () => {
           const aliased = normalizeCity(rawCity);
-          if (aliased !== rawCity) return aliased; // alias map hit — skip API call
+          if (aliased !== rawCity || isGlobalCity(aliased)) return aliased; 
           return correctCity(rawCity, apiKey).catch(() => rawCity);
         })()
       : Promise.resolve(normalizeCity(rawCity)),
@@ -140,29 +146,28 @@ export async function GET(request: Request) {
 
   const keywordCorrected = !!rawKeyword  && resolvedKeyword !== rawKeyword;
   const cityCorrected    = !!rawCity     && resolvedCity    !== rawCity;
-  const isGlobalQuery    = !resolvedKeyword && (!resolvedCity || resolvedCity.toLowerCase() === 'global') && (!rawCategory || rawCategory === 'All');
+  const isGlobalQuery    = !resolvedKeyword && isGlobalCity(resolvedCity) && (!rawCategory || rawCategory === 'All');
 
   // ── 2. Build DB WHERE clause ──────────────────────────────────────────
   const andConditions: any[] = [];
 
   if (resolvedKeyword) {
-    // 🔥 FIX: Deep search enforcement. Splits multiple words into an array and demands an AND 
-    // overlap of OR conditions to strictly filter out unrelated generic matches.
     const words = resolvedKeyword.trim().split(/\s+/).filter(Boolean);
     const wordConditions = words.map(word => ({
       OR: [
         { title:       { contains: word, mode: 'insensitive' } },
-        { description: { contains: word, mode: 'insensitive' } },
+        { description: { contains: word, mode: 'insensitive' } }, // Artist fix lives here
         { city:        { contains: word, mode: 'insensitive' } },
       ],
     }));
     andConditions.push(...wordConditions);
   }
 
+  // 🔥 FIX: Added "Sport" support alongside "Sports"
   if (rawCategory && rawCategory !== 'All') {
     const catMap: Record<string, string> = {
       Concerts: 'Music', Theater: 'Theatre',
-      Comedy: 'Comedy', Sports: 'Sports', Festivals: 'Festival',
+      Comedy: 'Comedy', Sports: 'Sports', Sport: 'Sports', Festivals: 'Festival',
     };
     const mapped = catMap[rawCategory] ?? rawCategory;
     andConditions.push({
@@ -173,36 +178,28 @@ export async function GET(request: Request) {
     });
   }
 
-  // 🔥 FIX: City filter applied if explicitly provided, ensuring precise geographic searches
-  if (resolvedCity && resolvedCity.toLowerCase() !== 'global') {
+  // 🔥 FIX: Global queries completely skip the city restriction
+  if (resolvedCity && !isGlobalCity(resolvedCity)) {
     andConditions.push({ city: { contains: resolvedCity, mode: 'insensitive' } });
   }
 
-  // Global query (no filters at all) uses an EMPTY where clause to return ALL events in the DB
   const dbQuery = andConditions.length > 0 ? { AND: andConditions } : {};
 
-  // ── 3. Count existing events — bot pool warmed independently (not on critical path)
+  // ── 3. Initialize Bots
   getBotPool().catch(err => console.error('Bot pool warm failed:', err));
-  const existingCount = await prisma.event.count({ where: dbQuery });
 
-  // ── 4. Sync strategy ─────────────────────────────────────────────────
-  const syncKey = `${resolvedCity ?? ''}::${resolvedKeyword ?? ''}::${rawCategory ?? ''}`;
+  // ── 4. Sync Strategy ─────────────────────────────────────────────────
+  const syncKey = `${resolvedCity ?? 'global'}::${resolvedKeyword ?? ''}::${rawCategory ?? ''}`;
 
-  if (existingCount > 0) {
-    // Data exists → stream it immediately, refresh cache in background
-    if (apiKey && !isSyncCoolingDown(syncKey)) {
-      markSynced(syncKey);
-      syncExternalEvents(resolvedCity, resolvedKeyword, rawCategory, apiKey).catch(console.error);
-    }
-  } else {
-    // No data at all → await the sync first so user sees results on first load
-    if (apiKey) {
-      markSynced(syncKey);
-      await syncExternalEvents(resolvedCity, resolvedKeyword, rawCategory, apiKey).catch(console.error);
-    }
+  // 🔥 FIX: We ALWAYS await the Ticketmaster sync if it's not cooling down. 
+  // This guarantees that global queries pull real-time worldwide events 
+  // before ever returning a response to you.
+  if (apiKey && !isSyncCoolingDown(syncKey)) {
+    markSynced(syncKey);
+    await syncExternalEvents(resolvedCity, resolvedKeyword, rawCategory, apiKey).catch(console.error);
   }
 
-  // Re-count after sync (may have just imported events)
+  // Count exactly what we have after the mandatory TM Sync
   const finalCount = await prisma.event.count({ where: dbQuery });
 
   // ── 5. Response headers ───────────────────────────────────────────────
@@ -220,7 +217,7 @@ export async function GET(request: Request) {
   }
 
   // ── 6. Stream ─────────────────────────────────────────────────────────
-  const encoder  = new TextEncoder();
+  const encoder   = new TextEncoder();
   const batchSize = 12;
 
   const stream = new ReadableStream({
@@ -239,7 +236,6 @@ export async function GET(request: Request) {
       };
       controller.enqueue(encoder.encode(JSON.stringify(meta) + '\n'));
 
-      // If zero results even after sync, close immediately
       if (finalCount === 0) {
         controller.close();
         return;
@@ -247,7 +243,6 @@ export async function GET(request: Request) {
 
       let skip    = 0;
       let hasMore = true;
-      // First batch of 6 arrives fast for instant render, then chunks of 12
       const sizes = [6, ...Array(200).fill(batchSize)];
 
       try {
@@ -267,7 +262,6 @@ export async function GET(request: Request) {
                 orderBy: { price: 'asc' },
               },
             },
-            // Featured events bubble to the top; then soonest date first
             orderBy: [{ isFeatured: 'desc' }, { date: 'asc' }],
             take,
             skip,
@@ -306,12 +300,6 @@ export async function GET(request: Request) {
 }
 
 // ─── TICKETMASTER SYNC ────────────────────────────────────────────────────
-// • offsale / postponed = valid resale → included
-// • cancelled → skipped
-// • No invented prices — real TM data only
-// • Batch dedup check (1 query instead of N findFirst calls)
-// • Reuses bot pool — no new sellerProfile documents per sync
-// ─────────────────────────────────────────────────────────────────────────
 async function syncExternalEvents(
   targetCity: string | null,
   keyword:    string | null,
@@ -319,23 +307,22 @@ async function syncExternalEvents(
   apiKey:     string,
 ) {
   try {
-    // 🔥 FIX: Deep Search URL Builder.
-    // Instead of an IF/ELSE flow that overrides fields, we chain them together.
-    // We also increase size to 100 for a much richer discovery pool.
     let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&size=100`;
 
     if (keyword) {
       tmUrl += `&keyword=${encodeURIComponent(keyword)}`;
     }
     
-    if (targetCity && targetCity.toLowerCase() !== 'global') {
+    // 🔥 FIX: Prevents passing "Global" to the TM API, allowing true worldwide search
+    if (targetCity && !isGlobalCity(targetCity)) {
       tmUrl += `&city=${encodeURIComponent(targetCity)}`;
     }
 
     if (category && category !== 'All') {
+      // 🔥 FIX: Added 'Sport' mapped to TM's 'Sports' classification
       const catMap: Record<string, string> = {
         Concerts: 'Music', Theater: 'Arts & Theatre',
-        Comedy:   'Comedy', Sports: 'Sports',
+        Comedy:   'Comedy', Sports: 'Sports', Sport: 'Sports'
       };
       
       if (category === 'Festivals') {
@@ -345,9 +332,6 @@ async function syncExternalEvents(
       }
     }
 
-    // 🔥 FIX: Default discovery + deeper matches.
-    // Use relevance ranking over standard date ranking if discovering globally or using a keyword. 
-    // This fetches top-tier tours / events rather than random garage bands playing tomorrow.
     if (keyword || (!targetCity && (!category || category === 'All'))) {
       tmUrl += `&sort=relevance,desc`;
     } else {
@@ -361,7 +345,6 @@ async function syncExternalEvents(
     const liveEvents = (data._embedded?.events ?? []) as any[];
     if (liveEvents.length === 0) return;
 
-    // ── Batch dedup: ONE query to find all already-stored titles ──────────
     const candidateTitles = liveEvents
       .filter(e => (e.dates?.status?.code as string)?.toLowerCase() !== 'cancelled')
       .filter(e => e.priceRanges?.[0]?.min != null)
@@ -374,10 +357,8 @@ async function syncExternalEvents(
       })).map(e => e.title)
     );
 
-    // ── Get the shared bot pool ────────────────────────────────────────────
     const botPool = await getBotPool();
 
-    // ── Import new events only ─────────────────────────────────────────────
     for (const extEvent of liveEvents) {
       const statusCode = (extEvent.dates?.status?.code as string)?.toLowerCase();
       if (statusCode === 'cancelled') continue;
@@ -390,7 +371,7 @@ async function syncExternalEvents(
 
       const basePrice   = Number(Number(priceRange.min).toFixed(2));
       const catName     = extEvent.classifications?.[0]?.segment?.name || 'Live Event';
-      const actualCity  = extEvent._embedded?.venues?.[0]?.city?.name  || targetCity || 'Global';
+      const actualCity  = extEvent._embedded?.venues?.[0]?.city?.name  || (isGlobalCity(targetCity) ? 'Global' : targetCity) || 'Global';
       const venueName   = extEvent._embedded?.venues?.[0]?.name        || 'TBA';
       const imageUrl    =
         extEvent.images?.find((img: any) => img.ratio === '16_9' && img.width >= 1024)?.url ||
@@ -402,10 +383,18 @@ async function syncExternalEvents(
         ? new Date(eventDateString)
         : new Date(Date.now() + 86_400_000 * 7);
 
+      // 🔥 FIX (ARTIST SEARCH): Extracts artist/attraction names directly from Ticketmaster
+      // and injects them into the database description so they can be searched later!
+      const attractions = extEvent._embedded?.attractions
+        ?.map((a: any) => a.name)
+        .join(', ');
+
+      const description = `${catName} at ${venueName}${attractions ? ` • Feat. ${attractions}` : ''}`;
+
       const newEvent = await prisma.event.create({
         data: {
           title,
-          description: `${catName} at ${venueName}`,
+          description,
           date,
           city:        actualCity,
           country:     'GLOBAL',
@@ -432,4 +421,4 @@ async function syncExternalEvents(
   } catch (err) {
     console.error('TM Sync error:', err instanceof Error ? err.message : err);
   }
-      }
+                     }
