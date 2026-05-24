@@ -348,20 +348,48 @@ export async function GET(request: Request) {
   const existingCount = await prisma.event.count({ where: dbQuery });
 
   // ── 4. Sync strategy ────────────────────────────────────────────────────────
+  //
+  // KEYWORD / ARTIST SEARCH  ← user explicitly searched, always hit TM fresh
+  //   • Start the full artist sweep immediately (no cooldown gate).
+  //   • If DB already has results: run sync IN PARALLEL and stream existing
+  //     events right away; new events from TM are appended after sync finishes.
+  //   • If DB is empty: await sync first so the user sees something.
+  //
+  // BROWSE (city / category / global)
+  //   • Keep the background-with-cooldown approach — we don't want slow
+  //     page loads when the user is just browsing.
+  //
   const syncKey = [resolvedCity, rawState, resolvedCountryCode, resolvedKeyword, rawCategory]
     .map(v => v ?? '').join('::');
 
-  if (existingCount > 0) {
+  let syncPromise: Promise<void> = Promise.resolve();
+
+  if (resolvedKeyword && apiKey) {
+    // Always fresh for explicit artist/keyword searches — no cooldown check
+    markSynced(syncKey);
+    syncPromise = syncExternalEvents(
+      resolvedCity, rawState, resolvedCountryCode, resolvedKeyword,
+      rawCategory, apiKey, rawCountry,
+    ).catch(console.error);
+
+    if (existingCount === 0) {
+      // Nothing in DB yet — must wait before we can show anything
+      await syncPromise;
+      syncPromise = Promise.resolve(); // already done
+    }
+    // else: sync runs in parallel; we stream existing events now, new ones after
+  } else {
+    // Passive browse — cooldown-gated background sync
     if (apiKey && !isSyncCoolingDown(syncKey)) {
       markSynced(syncKey);
-      syncExternalEvents(resolvedCity, rawState, resolvedCountryCode, resolvedKeyword, rawCategory, apiKey, rawCountry)
-        .catch(console.error);
+      syncPromise = syncExternalEvents(
+        resolvedCity, rawState, resolvedCountryCode, resolvedKeyword,
+        rawCategory, apiKey, rawCountry,
+      ).catch(console.error);
     }
-  } else {
-    if (apiKey) {
-      markSynced(syncKey);
-      await syncExternalEvents(resolvedCity, rawState, resolvedCountryCode, resolvedKeyword, rawCategory, apiKey, rawCountry)
-        .catch(console.error);
+    if (existingCount === 0) {
+      await syncPromise;
+      syncPromise = Promise.resolve();
     }
   }
 
@@ -404,17 +432,21 @@ export async function GET(request: Request) {
       };
       controller.enqueue(encoder.encode(JSON.stringify(meta) + '\n'));
 
-      if (finalCount === 0) { controller.close(); return; }
+      if (finalCount === 0 && !resolvedKeyword) { controller.close(); return; }
 
-      let skip    = 0;
-      let hasMore = true;
-      const sizes = [6, ...Array(200).fill(batchSize)];
+      // Helper: stream all DB events matching a query, tracking IDs we've sent
+      async function streamDbEvents(extraWhere: any = {}, seenIds: Set<string> = new Set()) {
+        let skip    = 0;
+        let hasMore = true;
+        const sizes = [6, ...Array(200).fill(batchSize)];
+        const combinedWhere = Object.keys(extraWhere).length
+          ? { AND: [dbQuery, extraWhere] }
+          : dbQuery;
 
-      try {
         for (const take of sizes) {
           if (!hasMore) break;
           const batch = await prisma.event.findMany({
-            where: dbQuery,
+            where: combinedWhere,
             include: {
               ticketBatches: {
                 where:   { quantity: { gt: 0 } },
@@ -427,10 +459,11 @@ export async function GET(request: Request) {
             skip,
           });
 
+          const fresh = batch.filter(e => !seenIds.has(e.id));
           if (batch.length === 0) {
             hasMore = false;
-          } else {
-            const formatted = batch.map(({ ticketBatches, ...rest }) => ({
+          } else if (fresh.length > 0) {
+            const formatted = fresh.map(({ ticketBatches, ...rest }) => ({
               ...rest,
               listings: ticketBatches.map(tb => ({
                 id: tb.id, price: tb.price, quantity: tb.quantity,
@@ -438,8 +471,25 @@ export async function GET(request: Request) {
               })),
             }));
             controller.enqueue(encoder.encode(JSON.stringify(formatted) + '\n'));
+            fresh.forEach(e => seenIds.add(e.id));
             skip += take;
+          } else {
+            // All results in this page already sent — no more new ones
+            hasMore = false;
           }
+        }
+        return seenIds;
+      }
+
+      try {
+        // ── Phase 1: stream whatever is already in DB right now ───────────────
+        const sentIds = await streamDbEvents();
+
+        // ── Phase 2 (keyword only): wait for TM sync to finish, then stream
+        //    any NEW events it added that we haven't sent yet ──────────────────
+        if (resolvedKeyword) {
+          await syncPromise; // sync was running in parallel since request start
+          await streamDbEvents({ id: { notIn: Array.from(sentIds) } }, sentIds);
         }
       } catch (err) {
         console.error('Stream error:', err);
@@ -684,4 +734,4 @@ async function syncExternalEvents(
   } catch (err) {
     console.error('TM Sync error:', err instanceof Error ? err.message : err);
   }
-    }
+  }
