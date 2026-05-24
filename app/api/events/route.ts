@@ -40,8 +40,10 @@ async function getBotPool(): Promise<string[]> {
   }
 
   // Fill the gap
-  const needed   = BOT_POOL_SIZE - existing.length;
-  const newBots  = await prisma.sellerProfile.createManyAndReturn({
+  // 🛠 FIX: createManyAndReturn is not supported on MongoDB.
+  //    Use createMany (write) + findMany (read) as a two-step alternative.
+  const needed = BOT_POOL_SIZE - existing.length;
+  await prisma.sellerProfile.createMany({
     data: Array.from({ length: needed }).map(() => ({
       name:      'Verified Seller',
       isBot:     true,
@@ -49,7 +51,13 @@ async function getBotPool(): Promise<string[]> {
     })),
   });
 
-  _botPoolCache = [...existing.map(b => b.id), ...newBots.map(b => b.id)];
+  const allBots = await prisma.sellerProfile.findMany({
+    where:  { isBot: true },
+    select: { id: true },
+    take:   BOT_POOL_SIZE,
+  });
+
+  _botPoolCache = allBots.map(b => b.id);
   return _botPoolCache;
 }
 
