@@ -163,7 +163,7 @@ export default async function AdminEventsPage() {
                         {/* 4. Base Price */}
                         <td className="p-6">
                           <p className="font-black text-lg text-white tracking-tighter">
-                            &#x20A6;{event.basePrice.toLocaleString()}
+                            ${event.basePrice.toLocaleString()}
                           </p>
                         </td>
 
