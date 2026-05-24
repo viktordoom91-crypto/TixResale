@@ -40,37 +40,52 @@ const getLocalDateString = (d: Date) => {
 
 function HomeContent() {
   const searchParams = useSearchParams();
-  const cityParam = searchParams.get('city');
-  const keywordParam = searchParams.get('keyword');
-  const categoryParam = searchParams.get('category');
+  const router       = useRouter();
+
+  // ── ALL filter state lives in the URL — never in local state ─────────────
+  // This prevents the split-brain where cityParam (URL) and activeKeyword
+  // (local state) disagree and send conflicting params to the API.
+  const cityParam     = searchParams.get('city')     || null;
+  const keywordParam  = searchParams.get('keyword')  || null;
+  const categoryParam = searchParams.get('category') || null;
+
+  // Derived active values — single source of truth
+  const activeKeyword  = keywordParam  || '';
+  const activeCategory = categoryParam || 'All';
 
   // Initialize currency formatter
   const { formatPrice } = useCurrency();
 
-  const [data, setData] = useState<{ events: Event[]; count: number; location: { city: string } } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isStreaming, setIsStreaming] = useState(false); 
-  
+  const [data, setData]           = useState<{ events: Event[]; count: number; location: { city: string } } | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [isStreaming, setIsStreaming] = useState(false);
+
+  // searchInput is purely a controlled-input value — it doesn't drive the fetch
   const [searchInput, setSearchInput] = useState(keywordParam || '');
-  const [activeKeyword, setActiveKeyword] = useState(keywordParam || '');
-  const [activeCategory, setActiveCategory] = useState(categoryParam || 'All');
-  const [activeDate, setActiveDate] = useState<string>('Any');
+  const [activeDate, setActiveDate]   = useState<string>('Any');
   const [currentHero, setCurrentHero] = useState(0);
-  const [rotation, setRotation] = useState(0);
+  const [rotation, setRotation]       = useState(0);
   const [visibleLimit, setVisibleLimit] = useState(6);
 
+  // Keep the search box in sync when URL changes externally (e.g. browser back)
   useEffect(() => {
-    if (keywordParam !== null) {
-      setActiveKeyword(keywordParam);
-      setSearchInput(keywordParam);
-      setActiveCategory('All'); 
-    }
-    if (categoryParam !== null) {
-      setActiveCategory(categoryParam);
-      setActiveKeyword('');
-      setSearchInput('');
-    }
-  }, [keywordParam, categoryParam]);
+    setSearchInput(keywordParam || '');
+  }, [keywordParam]);
+
+  // ── Navigation helpers — always clear stale params ────────────────────────
+  const goKeyword  = useCallback((kw: string) => {
+    // Keyword search: clear city + category so only the keyword drives the query
+    const q = new URLSearchParams();
+    if (kw) q.set('keyword', kw);
+    router.push(`/?${q.toString()}`);
+  }, [router]);
+
+  const goCategory = useCallback((cat: string) => {
+    // Category filter: clear keyword + city
+    const q = new URLSearchParams();
+    if (cat && cat !== 'All') q.set('category', cat);
+    router.push(`/?${q.toString()}`);
+  }, [router]);
 
   const upcomingDates = useMemo(() => {
     const dates = [];
@@ -91,20 +106,20 @@ function HomeContent() {
     async function fetchStreamedEvents() {
       setLoading(true);
       setIsStreaming(true);
-      
-      // 🛠 FIXED: Default to 'Global' if no city is specified to unlock worldwide queries
       setData({ events: [], count: 0, location: { city: cityParam || 'Global' } });
 
       try {
-        let apiUrl = '/api/events?';
-        if (cityParam) apiUrl += `city=${encodeURIComponent(cityParam)}&`;
-        if (activeKeyword) apiUrl += `keyword=${encodeURIComponent(activeKeyword)}&`;
-        if (activeCategory !== 'All') apiUrl += `category=${encodeURIComponent(activeCategory)}&`;
+        // Build API URL purely from URL params — no local state mixed in.
+        // Rule: keyword and city are mutually exclusive at the API level.
+        // If a keyword is set we do a global artist search; city is ignored.
+        const q = new URLSearchParams();
+        if (keywordParam)                         q.set('keyword',  keywordParam);
+        else if (cityParam)                       q.set('city',     cityParam);
+        if (categoryParam && categoryParam !== 'All') q.set('category', categoryParam);
 
-        const response = await fetch(apiUrl);
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-
+        const response = await fetch(`/api/events?${q.toString()}`);
+        const reader   = response.body?.getReader();
+        const decoder  = new TextDecoder();
         if (!reader) return;
 
         let accumulatedEvents: Event[] = [];
@@ -113,24 +128,22 @@ function HomeContent() {
           const { value, done } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n").filter(line => line.trim() !== "");
-
+          const lines = decoder.decode(value, { stream: true }).split('\n').filter(l => l.trim());
           lines.forEach(line => {
             try {
               const parsed = JSON.parse(line);
-              // Skip the __meta packet the route sends as the first line
-              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.__meta) return;
+              // Skip the __meta packet (first line from route)
+              if (parsed && !Array.isArray(parsed) && parsed.__meta) return;
               const newEvents = parsed as Event[];
               if (!Array.isArray(newEvents) || newEvents.length === 0) return;
               accumulatedEvents = [...accumulatedEvents, ...newEvents];
               setData({
                 events: accumulatedEvents,
-                count: accumulatedEvents.length,
-                location: { city: cityParam || 'Global' }
+                count:  accumulatedEvents.length,
+                location: { city: cityParam || 'Global' },
               });
               setLoading(false);
-            } catch(e) { }
+            } catch { }
           });
         }
       } catch (error) {
@@ -141,10 +154,11 @@ function HomeContent() {
       }
     }
     fetchStreamedEvents();
-  }, [cityParam, activeKeyword, activeCategory]);
+  // Depend only on URL params — they are the single source of truth
+  }, [keywordParam, cityParam, categoryParam]);
 
-  // 🛠 FIXED: currentCity defaults to Global
-  const currentCity = data?.location?.city || cityParam || 'Global';
+  // currentCity: show keyword label in hero when doing an artist search
+  const currentCity = keywordParam ? `"${keywordParam}"` : (data?.location?.city || cityParam || 'Global');
 
   const validEvents = useMemo(() => {
     if (!data?.events) return [];
@@ -224,9 +238,8 @@ function HomeContent() {
 
   const handleSearch = (e: FormEvent) => {
     e.preventDefault();
-    setActiveKeyword(searchInput);
-    setActiveCategory('All'); 
     setActiveDate('Any');
+    goKeyword(searchInput.trim());
   };
 
   const activeHero = heroEvents[currentHero] || heroEvents[0];
@@ -343,7 +356,7 @@ function HomeContent() {
                   {dynamicTrending.map((item, idx) => (
                     <button 
                       key={idx} 
-                      onClick={() => { setSearchInput(item.name); setActiveKeyword(item.name); setActiveCategory('All'); }} 
+                      onClick={() => { setSearchInput(item.name); goKeyword(item.name); }} 
                       className="flex-shrink-0 group text-left w-56 relative outline-none"
                     >
                       <div className="h-72 rounded-3xl overflow-hidden relative border border-zinc-800 bg-zinc-900 shadow-xl group-hover:border-lime-400/50 group-hover:shadow-[0_0_30px_rgba(57,255,20,0.15)] transition-all duration-500">
@@ -396,7 +409,7 @@ function HomeContent() {
                   {dynamicArtists.map((artist) => (
                     <button 
                       key={artist.rank} 
-                      onClick={() => { setSearchInput(artist.name); setActiveKeyword(artist.name); setActiveCategory('All'); }} 
+                      onClick={() => { setSearchInput(artist.name); goKeyword(artist.name); }} 
                       className="flex-shrink-0 group relative flex flex-col items-center w-28 outline-none"
                     >
                       <div className="absolute -top-6 text-7xl font-black italic text-zinc-800/50 group-hover:text-lime-400/20 transition-colors z-0 select-none pointer-events-none">
@@ -425,7 +438,7 @@ function HomeContent() {
               const Icon = tab.icon;
               return (
                 <button
-                  key={tab.id} onClick={() => setActiveCategory(tab.id)}
+                  key={tab.id} onClick={() => { setActiveDate('Any'); goCategory(tab.id); }}
                   className={`relative flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold whitespace-nowrap transition-colors border ${activeCategory === tab.id ? 'border-lime-400 text-black' : 'border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700'}`}
                 >
                   {activeCategory === tab.id && (
@@ -714,4 +727,4 @@ export default function Home() {
       <HomeContent />
     </Suspense>
   );
-  }
+    }
