@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import {
   Calendar, MapPin, Star, Ticket,
-  Image as ImageIcon, Plus, Edit, Clock, Tag
+  Image as ImageIcon, Plus, Edit, Clock, Tag,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -28,8 +28,8 @@ const CATEGORY_STYLES: Record<string, { label: string; color: string }> = {
   concert:  { label: 'Concert',  color: 'bg-purple-500/10 text-purple-300 border-purple-500/20' },
   festival: { label: 'Festival', color: 'bg-orange-500/10 text-orange-300 border-orange-500/20' },
   comedy:   { label: 'Comedy',   color: 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20' },
-  sports:   { label: 'Sports',   color: 'bg-blue-500/10  text-blue-300  border-blue-500/20'  },
-  theater:  { label: 'Theater',  color: 'bg-pink-500/10  text-pink-300  border-pink-500/20'  },
+  sports:   { label: 'Sports',   color: 'bg-blue-500/10  text-blue-300  border-blue-500/20'    },
+  theater:  { label: 'Theater',  color: 'bg-pink-500/10  text-pink-300  border-pink-500/20'    },
 };
 
 export default async function AdminEventsPage() {
@@ -88,9 +88,7 @@ export default async function AdminEventsPage() {
                 ) : (
                   events.map((event) => {
                     const eventDate = new Date(event.date);
-                    const cat = event.category
-                      ? CATEGORY_STYLES[event.category]
-                      : null;
+                    const cat       = event.category ? CATEGORY_STYLES[event.category] : null;
 
                     return (
                       <tr
@@ -221,4 +219,4 @@ export default async function AdminEventsPage() {
       </main>
     </div>
   );
-                          }
+                    }
