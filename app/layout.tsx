@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Salex | Honest Ticket Exchange",
+  title: "Tixresale | Honest Ticket Exchange",
   description: "Secure ticket resale marketplace.",
 };
 
