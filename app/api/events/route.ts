@@ -4,20 +4,20 @@ import { faker } from '@faker-js/faker';
 
 export const dynamic = 'force-dynamic';
 
-// ─── SYNC COOLDOWN (Prevents TM API Rate Limiting) ───────────────────────
+// ─── SYNC COOLDOWN ────────────────────────────────────────────────────────
 const syncCooldown = new Map<string, number>();
-const SYNC_TTL_MS  = 30 * 60 * 1000; // 30 minutes
+const SYNC_TTL_MS  = 30 * 60 * 1000; // 30 minutes per unique query
 
 function isSyncCoolingDown(key: string) {
   const last = syncCooldown.get(key);
   return !!last && Date.now() - last < SYNC_TTL_MS;
 }
-
 function markSynced(key: string) {
   syncCooldown.set(key, Date.now());
 }
 
-// ─── BOT SELLER POOL (Prevents DB Overload) ──────────────────────────────
+// ─── BOT SELLER POOL ─────────────────────────────────────────────────────
+// 40 shared bots reused across all events — zero new seller docs per sync.
 const BOT_POOL_SIZE = 40;
 let _botPoolCache: string[] | null = null;
 
@@ -54,59 +54,69 @@ async function getBotPool(): Promise<string[]> {
   return _botPoolCache;
 }
 
-// ─── GLOBAL INTENT PARSERS ───────────────────────────────────────────────
-function isGlobalCity(city: string | null): boolean {
-  if (!city) return true;
-  const c = city.toLowerCase().trim();
-  return ['global', 'all', 'any', 'worldwide'].includes(c);
+// ─── CITY ALIAS MAP ───────────────────────────────────────────────────────
+const CITY_ALIASES: Record<string, string> = {
+  'nyc': 'New York', 'ny': 'New York', 'new yok': 'New York', 'new yokr': 'New York',
+  'la':  'Los Angeles', 'los angles': 'Los Angeles', 'los angelos': 'Los Angeles',
+  'lon': 'London', 'londen': 'London', 'londn': 'London',
+  'chi': 'Chicago', 'chicgo': 'Chicago',
+  'sf':  'San Francisco', 'san fran': 'San Francisco',
+  'dc':  'Washington', 'washington dc': 'Washington',
+  'lv':  'Las Vegas', 'vegas': 'Las Vegas',
+  'atl': 'Atlanta',  'atlnata': 'Atlanta',
+  'mia': 'Miami',    'miamia':  'Miami',
+  'tor': 'Toronto',  'tronto':  'Toronto',
+  'par': 'Paris',    'pris': 'Paris',     'paaris': 'Paris',
+  'ber': 'Berlin',   'berlim': 'Berlin',
+  'tok': 'Tokyo',    'tokio':  'Tokyo',
+  'syd': 'Sydney',   'sydeny': 'Sydney',
+  'mel': 'Melbourne','melbourna': 'Melbourne',
+  'lag': 'Lagos',    'abj': 'Abuja',
+  'dub': 'Dubai',    'dubay': 'Dubai',
+};
+
+function normalizeCity(city: string | null): string | null {
+  if (!city) return null;
+  const lower = city.trim().toLowerCase();
+  return CITY_ALIASES[lower] ?? city.trim();
 }
 
-function parseGlobalIntent(keyword: string | null, category: string | null) {
-  let resolvedKeyword = keyword?.trim() || null;
-  let resolvedCategory = category;
-
-  if (resolvedKeyword) {
-    const lowerKw = resolvedKeyword.toLowerCase();
-
-    // 1. All/Any Artists -> Maps to global Concerts
-    if (['all artists', 'all artist', 'any artist', 'any artists', 'all music', 'any music'].includes(lowerKw)) {
-      resolvedKeyword = null; 
-      resolvedCategory = 'Concerts'; 
-    }
-    // 2. All/Any Sports -> Maps to global Sports
-    else if (['all sports', 'all sport', 'any sport', 'any sports', 'any sport event', 'all sport events'].includes(lowerKw)) {
-      resolvedKeyword = null;
-      resolvedCategory = 'Sports';
-    }
-    // 3. Specific Major Leagues -> Forces Sports routing
-    else {
-      const majorSports = ['nfl', 'nba', 'mlb', 'ufc', 'wwe', 'golf', 'tennis', 'f1', 'nhl', 'mls'];
-      if (majorSports.includes(lowerKw)) {
-        resolvedKeyword = ['golf', 'tennis'].includes(lowerKw) 
-          ? lowerKw.charAt(0).toUpperCase() + lowerKw.slice(1) 
-          : lowerKw.toUpperCase(); 
-        resolvedCategory = 'Sports';
-      }
-    }
+// ─── FUZZY KEYWORD CORRECTION via TM Suggest ─────────────────────────────
+async function correctKeyword(keyword: string, apiKey: string): Promise<string> {
+  // Bypass auto-correction completely for short acronyms like UFC, WWE
+  if (keyword.trim().length <= 4 && keyword.trim() === keyword.trim().toUpperCase()) {
+    return keyword;
   }
 
-  return { intentKeyword: resolvedKeyword, intentCategory: resolvedCategory };
-}
-
-// ─── FUZZY SEARCH AUTO-CORRECT (TM Suggest API) ──────────────────────────
-async function correctKeyword(keyword: string, apiKey: string): Promise<string> {
   try {
     const url = `https://app.ticketmaster.com/discovery/v2/suggest?apikey=${apiKey}`
               + `&keyword=${encodeURIComponent(keyword)}&resource=attractions,events&size=1`;
     const res  = await fetch(url, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return keyword;
     const json = await res.json();
-    
-    // 🔥 FIX: Trust the TM suggestion aggressively to fix bad typos like "foo fighter" or "drak"
-    const suggestion = json._embedded?.attractions?.[0]?.name || json._embedded?.events?.[0]?.name;
-    return suggestion ? suggestion : keyword;
+    const suggestion =
+      json._embedded?.attractions?.[0]?.name ||
+      json._embedded?.events?.[0]?.name;
+    if (!suggestion) return keyword;
+    // Accept correction only if it shares the first 4 chars (avoids unrelated results)
+    const similar = suggestion.toLowerCase().startsWith(keyword.toLowerCase().slice(0, 4));
+    return similar ? suggestion : keyword;
   } catch {
     return keyword;
+  }
+}
+
+// ─── FUZZY CITY CORRECTION via TM Suggest ────────────────────────────────
+async function correctCity(city: string, apiKey: string): Promise<string> {
+  try {
+    const url = `https://app.ticketmaster.com/discovery/v2/suggest?apikey=${apiKey}`
+              + `&keyword=${encodeURIComponent(city)}&resource=venues&size=1`;
+    const res  = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return city;
+    const json = await res.json();
+    return json._embedded?.venues?.[0]?.city?.name || city;
+  } catch {
+    return city;
   }
 }
 
@@ -118,241 +128,293 @@ export async function GET(request: Request) {
   const rawCategory = searchParams.get('category');
   const apiKey      = process.env.TICKETMASTER_API_KEY;
 
-  // 1. Parse Intents
-  const { intentKeyword, intentCategory } = parseGlobalIntent(rawKeyword, rawCategory);
-  
-  // 2. Auto-Correct Spelling
-  const resolvedKeyword = intentKeyword && apiKey 
-    ? await correctKeyword(intentKeyword, apiKey).catch(() => intentKeyword) 
-    : intentKeyword;
+  // ── 1. Correct inputs in parallel (non-blocking — failures fall back safely)
+  const [resolvedKeyword, resolvedCity] = await Promise.all([
+    rawKeyword && apiKey
+      ? correctKeyword(rawKeyword, apiKey).catch(() => rawKeyword)
+      : Promise.resolve(rawKeyword),
 
-  // 3. Await External Sync Safely
-  const syncKey = `${rawCity ?? 'global'}::${resolvedKeyword ?? ''}::${intentCategory ?? ''}`;
-  if (apiKey && !isSyncCoolingDown(syncKey)) {
-    markSynced(syncKey);
-    await syncExternalEvents(rawCity, resolvedKeyword, intentCategory, apiKey).catch(console.error);
-  }
+    rawCity && apiKey
+      ? (async () => {
+          const aliased = normalizeCity(rawCity);
+          if (aliased !== rawCity) return aliased; // alias map hit — skip API call
+          return correctCity(rawCity, apiKey).catch(() => rawCity);
+        })()
+      : Promise.resolve(normalizeCity(rawCity)),
+  ]);
 
-  // 4. Build Robust Query Conditions
+  const keywordCorrected = !!rawKeyword  && resolvedKeyword !== rawKeyword;
+  const cityCorrected    = !!rawCity     && resolvedCity    !== rawCity;
+  const isGlobalQuery    = !resolvedKeyword && !resolvedCity && !rawCategory;
+
+  // ── 2. Build DB WHERE clause ──────────────────────────────────────────
   const andConditions: any[] = [];
 
-  // Split keywords to ensure partial matches work (e.g. "Foo Fighters" matches if "Foo" and "Fighters" exist)
+  // Loose multi-word query structure (OR condition applied to each split word)
   if (resolvedKeyword) {
     const words = resolvedKeyword.trim().split(/\s+/).filter(Boolean);
-    const wordConditions = words.map(word => ({
-      OR: [
-        { title:       { contains: word, mode: 'insensitive' } },
-        { description: { contains: word, mode: 'insensitive' } }, // Artist name caught here!
-        { city:        { contains: word, mode: 'insensitive' } },
-      ]
-    }));
-    andConditions.push({ AND: wordConditions });
-  }
-
-  // Category mapping
-  if (intentCategory && intentCategory !== 'All') {
-    const catMap: Record<string, string> = {
-      Concerts: 'Music', Theater: 'Theatre',
-      Comedy: 'Comedy', Sports: 'Sports', Sport: 'Sports', Festivals: 'Festival'
-    };
-    const mapped = catMap[intentCategory] ?? intentCategory;
     andConditions.push({
-      OR: [
-        { title:       { contains: mapped, mode: 'insensitive' } },
-        { description: { contains: mapped, mode: 'insensitive' } }
-      ]
+      OR: words.flatMap(word => [
+        { title:       { contains: word, mode: 'insensitive' } },
+        { description: { contains: word, mode: 'insensitive' } },
+        { city:        { contains: word, mode: 'insensitive' } },
+      ]),
     });
   }
 
-  // City filter
-  if (rawCity && !isGlobalCity(rawCity)) {
-    andConditions.push({ city: { equals: rawCity.trim(), mode: 'insensitive' } });
+  if (rawCategory && rawCategory !== 'All') {
+    const catMap: Record<string, string> = {
+      Concerts: 'Music', Theater: 'Theatre',
+      Comedy: 'Comedy', Sports: 'Sports', Festivals: 'Festival',
+    };
+    const mapped = catMap[rawCategory] ?? rawCategory;
+    andConditions.push({
+      OR: [
+        { title:       { contains: mapped, mode: 'insensitive' } },
+        { description: { contains: mapped, mode: 'insensitive' } },
+      ],
+    });
+  }
+
+  // City filter: case-insensitive phrase matching (not strict equality)
+  if (resolvedCity && !resolvedKeyword) {
+    andConditions.push({ city: { contains: resolvedCity, mode: 'insensitive' } });
   }
 
   const dbQuery = andConditions.length > 0 ? { AND: andConditions } : {};
 
-  // Initialize bot pool
+  // ── 3. Count existing events — bot pool warmed independently
   getBotPool().catch(err => console.error('Bot pool warm failed:', err));
+  const existingCount = await prisma.event.count({ where: dbQuery });
 
-  // 5. Stream Database Results
-  const encoder = new TextEncoder();
+  // ── 4. Sync strategy ─────────────────────────────────────────────────
+  const syncKey = `${resolvedCity ?? ''}::${resolvedKeyword ?? ''}::${rawCategory ?? ''}`;
+
+  if (existingCount > 0) {
+    // Data exists → stream it immediately, refresh cache in background
+    if (apiKey && !isSyncCoolingDown(syncKey)) {
+      markSynced(syncKey);
+      syncExternalEvents(resolvedCity, resolvedKeyword, rawCategory, apiKey).catch(console.error);
+    }
+  } else {
+    // No data at all → await the sync first so user sees results on first load
+    if (apiKey) {
+      markSynced(syncKey);
+      await syncExternalEvents(resolvedCity, resolvedKeyword, rawCategory, apiKey).catch(console.error);
+    }
+  }
+
+  // Re-count after sync
+  const finalCount = await prisma.event.count({ where: dbQuery });
+
+  // ── 5. Response headers ───────────────────────────────────────────────
+  const headers: Record<string, string> = {
+    'Content-Type':  'application/x-ndjson',
+    'Cache-Control': 'no-cache',
+    'Connection':    'keep-alive',
+  };
+  if (keywordCorrected && resolvedKeyword) {
+    headers['X-Corrected-Keyword'] = resolvedKeyword;
+    headers['X-Original-Keyword']  = rawKeyword!;
+  }
+  if (cityCorrected && resolvedCity) {
+    headers['X-Corrected-City'] = resolvedCity;
+  }
+
+  // ── 6. Stream ─────────────────────────────────────────────────────────
+  const encoder  = new TextEncoder();
+  const batchSize = 12;
+
   const stream = new ReadableStream({
     async start(controller) {
-      let skip = 0;
-      const batchSize = 12; 
+      const meta = {
+        __meta: true,
+        total:  finalCount,
+        query: {
+          keyword:  resolvedKeyword  ?? null,
+          city:     resolvedCity     ?? null,
+          category: rawCategory      ?? null,
+          isGlobal: isGlobalQuery,
+          correctedKeyword: keywordCorrected ? resolvedKeyword : null,
+          correctedCity:    cityCorrected    ? resolvedCity    : null,
+        },
+      };
+      controller.enqueue(encoder.encode(JSON.stringify(meta) + '\n'));
+
+      if (finalCount === 0) {
+        controller.close();
+        return;
+      }
+
+      let skip    = 0;
       let hasMore = true;
+      const sizes = [6, ...Array(200).fill(batchSize)];
 
       try {
-        while (hasMore) {
+        for (const take of sizes) {
+          if (!hasMore) break;
+
           const batch = await prisma.event.findMany({
             where: dbQuery,
             include: {
               ticketBatches: {
-                where: { quantity: { gt: 0 } },
-                include: { seller: { select: { name: true, avatarUrl: true, isBot: true } } },
+                where:   { quantity: { gt: 0 } },
+                include: {
+                  seller: {
+                    select: { id: true, name: true, avatarUrl: true, isBot: true }
+                  }
+                },
                 orderBy: { price: 'asc' },
               },
             },
             orderBy: [{ isFeatured: 'desc' }, { date: 'asc' }],
-            take: batchSize,
-            skip: skip,
+            take,
+            skip,
           });
 
           if (batch.length === 0) {
             hasMore = false;
           } else {
-            const formattedBatch = batch.map(event => ({
-              ...event,
-              listings: event.ticketBatches, 
-              ticketBatches: undefined 
+            const formatted = batch.map(({ ticketBatches, ...rest }) => ({
+              ...rest,
+              listings: ticketBatches.map(tb => ({
+                id:          tb.id,
+                price:       tb.price,
+                quantity:    tb.quantity,
+                ticketsSold: tb.ticketsSold,
+                seller:      tb.seller,
+              })),
             }));
 
-            const chunk = JSON.stringify(formattedBatch) + "\n";
-            controller.enqueue(encoder.encode(chunk));
-            skip += batchSize;
+            controller.enqueue(encoder.encode(JSON.stringify(formatted) + '\n'));
+            skip += take;
           }
         }
-      } catch (error) {
-        console.error("Stream Error:", error);
+      } catch (err) {
+        console.error('Stream error:', err);
+        controller.enqueue(
+          encoder.encode(JSON.stringify({ __error: 'Stream interrupted' }) + '\n')
+        );
       } finally {
         controller.close();
       }
-    }
-  });
-
-  return new Response(stream, {
-    headers: { 
-      "Content-Type": "application/x-ndjson",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive"
     },
   });
+
+  return new Response(stream, { headers });
 }
 
-// ─── UPGRADED TICKETMASTER AGGREGATOR ────────────────────────────────────
+// ─── TICKETMASTER SYNC ────────────────────────────────────────────────────
 async function syncExternalEvents(
-  targetCity: string | null, 
-  keyword: string | null, 
-  category: string | null,
-  apiKey: string
+  targetCity: string | null,
+  keyword:    string | null,
+  category:   string | null,
+  apiKey:     string,
 ) {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}`;
 
-    // 🔥 FIX: Increased size to 100 for "All" searches & added native spellcheck
-    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&size=100&includeSpellcheck=yes`;
-    
-    // Routing Logic
     if (keyword) {
-      tmUrl += `&keyword=${encodeURIComponent(keyword)}&sort=relevance,desc`;
-    } else {
-      tmUrl += `&sort=date,asc`;
-    }
-    
-    if (category && category !== 'All') {
+      tmUrl += `&keyword=${encodeURIComponent(keyword)}&size=50&sort=date,asc`;
+    } else if (category && category !== 'All') {
       const catMap: Record<string, string> = {
         Concerts: 'Music', Theater: 'Arts & Theatre',
-        Comedy: 'Comedy', Sports: 'Sports', Sport: 'Sports'
+        Comedy:   'Comedy', Sports: 'Sports',
       };
-      
       if (category === 'Festivals') {
-        if (!keyword) tmUrl += `&keyword=Festival`;
+        tmUrl += `&keyword=Festival&size=50&sort=date,asc`;
       } else {
-        tmUrl += `&classificationName=${encodeURIComponent(catMap[category] ?? category)}`; 
+        tmUrl += `&classificationName=${encodeURIComponent(catMap[category] ?? category)}&size=50&sort=date,asc`;
       }
-    } 
-    
-    if (targetCity && !isGlobalCity(targetCity)) {
-      tmUrl += `&city=${encodeURIComponent(targetCity)}`;
-    } 
-
-    const response = await fetch(tmUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
-
-    let liveEvents = [];
-    if (response.ok) {
-        const data = await response.json();
-        liveEvents = data._embedded?.events || [];
+    } else if (targetCity) {
+      tmUrl += `&city=${encodeURIComponent(targetCity)}&size=50&sort=date,asc`;
+    } else {
+      tmUrl += `&size=50&sort=relevance,desc`;
     }
 
-    // 🔥 FIX RESTORED: SUPERSTAR FALLBACK LOGIC
-    // If Ticketmaster returns 0 events for a major artist/sport, we dynamically generate a tour!
-    if (liveEvents.length === 0 && keyword) {
-        const mockCities = ["London", "New York", "Los Angeles", "Paris", "Toronto", "Sydney", "Tokyo", "Berlin"];
-        const numEvents = Math.floor(Math.random() * 4) + 4; // Generate 4 to 7 tour dates
-        
-        for(let i=0; i < numEvents; i++) {
-            const randomCity = mockCities[Math.floor(Math.random() * mockCities.length)];
-            const fakeDate = new Date();
-            fakeDate.setDate(fakeDate.getDate() + Math.floor(Math.random() * 120) + 14); // 14 to 134 days out
-            
-            liveEvents.push({
-               name: `${keyword} - World Tour ${fakeDate.getFullYear()}`,
-               classifications: [{ segment: { name: category === 'Sports' ? 'Sports' : 'Music' } }],
-               _embedded: { 
-                 venues: [{ city: { name: randomCity }, name: `${randomCity} Stadium` }],
-                 attractions: [{ name: keyword }] // Injects the keyword directly as an attraction!
-               },
-               dates: { start: { dateTime: fakeDate.toISOString() } },
-               images: [{ url: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?q=80&w=1000" }],
-               priceRanges: [{ min: 150 + Math.floor(Math.random() * 100) }]
-            });
-        }
-    }
+    const res = await fetch(tmUrl, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return;
 
+    const data       = await res.json();
+    const liveEvents = (data._embedded?.events ?? []) as any[];
     if (liveEvents.length === 0) return;
+
+    const candidateTitles = liveEvents
+      .filter(e => (e.dates?.status?.code as string)?.toLowerCase() !== 'cancelled')
+      .filter(e => e.priceRanges?.[0]?.min != null)
+      .map(e => (e.name as string)?.substring(0, 250) || 'Live Event');
+
+    const alreadyInDb = new Set(
+      (await prisma.event.findMany({
+        where:  { title: { in: candidateTitles } },
+        select: { title: true },
+      })).map(e => e.title)
+    );
 
     const botPool = await getBotPool();
 
     for (const extEvent of liveEvents) {
-      if (extEvent.dates?.status?.code?.toLowerCase() === 'cancelled') continue;
-      if (!extEvent.priceRanges?.[0]?.min) continue;
+      const statusCode = (extEvent.dates?.status?.code as string)?.toLowerCase();
+      if (statusCode === 'cancelled') continue;
 
-      const title = extEvent.name?.substring(0, 250) || "Live Event";
-      const catName = extEvent.classifications?.[0]?.segment?.name || "Live Event";
-      const actualCity = extEvent._embedded?.venues?.[0]?.city?.name || (isGlobalCity(targetCity) ? "Global" : targetCity) || "Global";
-      const venueName = extEvent._embedded?.venues?.[0]?.name || 'TBA';
+      const priceRange = extEvent.priceRanges?.[0];
+      if (!priceRange?.min) continue;
+
+      const title = (extEvent.name as string)?.substring(0, 250) || 'Live Event';
+      if (alreadyInDb.has(title)) continue;
+
+      const basePrice   = Number(Number(priceRange.min).toFixed(2));
+      const catName     = extEvent.classifications?.[0]?.segment?.name || 'Live Event';
+      const actualCity  = extEvent._embedded?.venues?.[0]?.city?.name  || targetCity || 'Global';
+      const venueName   = extEvent._embedded?.venues?.[0]?.name         || 'TBA';
+      const imageUrl    =
+        extEvent.images?.find((img: any) => img.ratio === '16_9' && img.width >= 1024)?.url ||
+        extEvent.images?.[0]?.url ||
+        'https://images.unsplash.com/photo-1540575861501-7cf05a4b125a?q=80&w=1000';
+
       const eventDateString = extEvent.dates?.start?.dateTime || extEvent.dates?.start?.localDate;
-      const date = eventDateString ? new Date(eventDateString) : new Date(Date.now() + 86400000 * 7);
-      const imageUrl = 
-        extEvent.images?.find((img: any) => img.ratio === '16_9' && img.width >= 1024)?.url || 
-        extEvent.images?.[0]?.url || 
-        "https://images.unsplash.com/photo-1540575861501-7cf05a4b125a?q=80&w=1000";
-      
-      const basePrice = Number(extEvent.priceRanges[0].min.toFixed(2)); 
+      const date = eventDateString
+        ? new Date(eventDateString)
+        : new Date(Date.now() + 86_400_000 * 7);
 
-      // 🔥 ARTIST/ATTRACTION FIX: Inject artists directly into the description
-      const attractions = extEvent._embedded?.attractions?.map((a: any) => a.name).join(', ');
-      const description = `${catName} at ${venueName}${attractions ? ` • Feat. ${attractions}` : ''}`;
+      // Extract Attractions & Generate Description
+      const attractionsList = extEvent._embedded?.attractions
+        ?.map((a: any) => a.name)
+        .filter(Boolean)
+        .join(', ');
 
-      const existingEvent = await prisma.event.findFirst({
-        where: { title, city: actualCity }
+      const description = attractionsList
+        ? `${catName} at ${venueName} • Feat. ${attractionsList}`
+        : `${catName} at ${venueName}`;
+
+      const newEvent = await prisma.event.create({
+        data: {
+          title,
+          description,
+          date,
+          city:        actualCity,
+          country:     'GLOBAL',
+          basePrice,
+          imageUrl,
+          isFeatured:  false,
+        },
       });
 
-      if (!existingEvent) {
-        const newEvent = await prisma.event.create({
-          data: { title, description, date, city: actualCity, country: 'GLOBAL', basePrice, imageUrl, isFeatured: false }
-        });
+      const numSellers   = Math.floor(Math.random() * 5) + 3;
+      const assignedBots = [...botPool].sort(() => Math.random() - 0.5).slice(0, numSellers);
 
-        // Use the Bot Pool instead of creating new records every time
-        const numSellers = Math.floor(Math.random() * 6) + 3;
-        const assignedBots = [...botPool].sort(() => Math.random() - 0.5).slice(0, numSellers);
+      await prisma.ticketBatch.createMany({
+        data: assignedBots.map(botId => ({
+          eventId:  newEvent.id,
+          sellerId: botId,
+          price:    basePrice,
+          quantity: Math.floor(Math.random() * 4) + 1,
+        })),
+      });
 
-        const batchesData = assignedBots.map((botId) => {
-          const variation = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 15);
-          return {
-            eventId: newEvent.id,
-            sellerId: botId,
-            price: basePrice + variation,
-            quantity: Math.floor(Math.random() * 4) + 1,
-          };
-        });
-
-        await prisma.ticketBatch.createMany({ data: batchesData });
-      }
+      alreadyInDb.add(title);
     }
-  } catch (error) {
-    console.error("Ticketmaster Sync Suppressed:", error instanceof Error ? error.message : "Timeout");
+  } catch (err) {
+    console.error('TM Sync error:', err instanceof Error ? err.message : err);
   }
-                                        }
+                              }
