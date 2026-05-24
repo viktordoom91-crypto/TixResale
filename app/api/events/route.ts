@@ -4,9 +4,9 @@ import { faker } from '@faker-js/faker';
 
 export const dynamic = 'force-dynamic';
 
-// ─── SYNC COOLDOWN ───────────────────────────────────────────────────────
+// ─── SYNC COOLDOWN (Prevents TM API Rate Limiting) ───────────────────────
 const syncCooldown = new Map<string, number>();
-const SYNC_TTL_MS  = 30 * 60 * 1000; // 30 minutes per unique query
+const SYNC_TTL_MS  = 30 * 60 * 1000; // 30 minutes
 
 function isSyncCoolingDown(key: string) {
   const last = syncCooldown.get(key);
@@ -17,7 +17,7 @@ function markSynced(key: string) {
   syncCooldown.set(key, Date.now());
 }
 
-// ─── BOT SELLER POOL ─────────────────────────────────────────────────────
+// ─── BOT SELLER POOL (Prevents DB Overload) ──────────────────────────────
 const BOT_POOL_SIZE = 40;
 let _botPoolCache: string[] | null = null;
 
@@ -54,41 +54,13 @@ async function getBotPool(): Promise<string[]> {
   return _botPoolCache;
 }
 
-// ─── CITY ALIAS MAP ──────────────────────────────────────────────────────
-const CITY_ALIASES: Record<string, string> = {
-  'nyc': 'New York', 'ny': 'New York', 'new yok': 'New York', 'new yokr': 'New York',
-  'la':  'Los Angeles', 'los angles': 'Los Angeles', 'los angelos': 'Los Angeles',
-  'lon': 'London', 'londen': 'London', 'londn': 'London',
-  'chi': 'Chicago', 'chicgo': 'Chicago',
-  'sf':  'San Francisco', 'san fran': 'San Francisco',
-  'dc':  'Washington', 'washington dc': 'Washington',
-  'lv':  'Las Vegas', 'vegas': 'Las Vegas',
-  'atl': 'Atlanta',  'atlnata': 'Atlanta',
-  'mia': 'Miami',    'miamia':  'Miami',
-  'tor': 'Toronto',  'tronto':  'Toronto',
-  'par': 'Paris',    'pris': 'Paris',     'paaris': 'Paris',
-  'ber': 'Berlin',   'berlim': 'Berlin',
-  'tok': 'Tokyo',    'tokio':  'Tokyo',
-  'syd': 'Sydney',   'sydeny': 'Sydney',
-  'mel': 'Melbourne','melbourna': 'Melbourne',
-  'lag': 'Lagos',    'abj': 'Abuja',
-  'dub': 'Dubai',    'dubay': 'Dubai',
-};
-
-function normalizeCity(city: string | null): string | null {
-  if (!city) return null;
-  const lower = city.trim().toLowerCase();
-  return CITY_ALIASES[lower] ?? city.trim();
-}
-
-// 🔥 FIX: Global City Check
+// ─── GLOBAL INTENT PARSERS ───────────────────────────────────────────────
 function isGlobalCity(city: string | null): boolean {
   if (!city) return true;
   const c = city.toLowerCase().trim();
   return ['global', 'all', 'any', 'worldwide'].includes(c);
 }
 
-// 🔥 FIX: Global Intent Parser for Catch-All Queries
 function parseGlobalIntent(keyword: string | null, category: string | null) {
   let resolvedKeyword = keyword?.trim() || null;
   let resolvedCategory = category;
@@ -96,17 +68,17 @@ function parseGlobalIntent(keyword: string | null, category: string | null) {
   if (resolvedKeyword) {
     const lowerKw = resolvedKeyword.toLowerCase();
 
-    // 1. All/Any Artists -> Strip keyword, force Concerts/Music category
+    // 1. All/Any Artists
     if (['all artists', 'all artist', 'any artist', 'any artists', 'all music', 'any music'].includes(lowerKw)) {
       resolvedKeyword = null; 
       resolvedCategory = 'Concerts'; 
     }
-    // 2. All/Any Sports -> Strip keyword, force Sports category
+    // 2. All/Any Sports
     else if (['all sports', 'all sport', 'any sport', 'any sports', 'any sport event', 'all sport events'].includes(lowerKw)) {
       resolvedKeyword = null;
       resolvedCategory = 'Sports';
     }
-    // 3. Specific Leagues -> Keep keyword, format cleanly, force Sports category
+    // 3. Specific Major Leagues
     else {
       const majorSports = ['nfl', 'nba', 'mlb', 'ufc', 'wwe', 'golf', 'tennis', 'f1', 'nhl', 'mls'];
       if (majorSports.includes(lowerKw)) {
@@ -121,39 +93,6 @@ function parseGlobalIntent(keyword: string | null, category: string | null) {
   return { intentKeyword: resolvedKeyword, intentCategory: resolvedCategory };
 }
 
-// ─── FUZZY KEYWORD CORRECTION ────────────────────────────────────────────
-async function correctKeyword(keyword: string, apiKey: string): Promise<string> {
-  try {
-    const url = `https://app.ticketmaster.com/discovery/v2/suggest?apikey=${apiKey}`
-              + `&keyword=${encodeURIComponent(keyword)}&resource=attractions,events&size=1`;
-    const res  = await fetch(url, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return keyword;
-    const json = await res.json();
-    const suggestion =
-      json._embedded?.attractions?.[0]?.name ||
-      json._embedded?.events?.[0]?.name;
-    if (!suggestion) return keyword;
-    const similar = suggestion.toLowerCase().startsWith(keyword.toLowerCase().slice(0, 4));
-    return similar ? suggestion : keyword;
-  } catch {
-    return keyword;
-  }
-}
-
-// ─── FUZZY CITY CORRECTION ───────────────────────────────────────────────
-async function correctCity(city: string, apiKey: string): Promise<string> {
-  if (isGlobalCity(city)) return city; 
-  try {
-    const url = `https://app.ticketmaster.com/discovery/v2/suggest?apikey=${apiKey}`
-              + `&keyword=${encodeURIComponent(city)}&resource=venues&size=1`;
-    const res  = await fetch(url, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return city;
-    const json = await res.json();
-    return json._embedded?.venues?.[0]?.city?.name || city;
-  } catch {
-    return city;
-  }
-}
 
 // ─── MAIN HANDLER ────────────────────────────────────────────────────────
 export async function GET(request: Request) {
@@ -163,43 +102,33 @@ export async function GET(request: Request) {
   const rawCategory = searchParams.get('category');
   const apiKey      = process.env.TICKETMASTER_API_KEY;
 
-  // ── 1. Parse Global Catch-All Intents
+  // 1. Parse Intents
   const { intentKeyword, intentCategory } = parseGlobalIntent(rawKeyword, rawCategory);
+  
+  // 2. Await External Sync Safely using the Cooldown map
+  const syncKey = `${rawCity ?? 'global'}::${intentKeyword ?? ''}::${intentCategory ?? ''}`;
+  if (apiKey && !isSyncCoolingDown(syncKey)) {
+    markSynced(syncKey);
+    await syncExternalEvents(rawCity, intentKeyword, intentCategory, apiKey).catch(console.error);
+  }
 
-  // ── 2. Correct inputs
-  const [resolvedKeyword, resolvedCity] = await Promise.all([
-    intentKeyword && apiKey
-      ? correctKeyword(intentKeyword, apiKey).catch(() => intentKeyword)
-      : Promise.resolve(intentKeyword),
-
-    rawCity && apiKey
-      ? (async () => {
-          const aliased = normalizeCity(rawCity);
-          if (aliased !== rawCity || isGlobalCity(aliased)) return aliased;
-          return correctCity(rawCity, apiKey).catch(() => rawCity);
-        })()
-      : Promise.resolve(normalizeCity(rawCity))
-  ]);
-
-  const keywordCorrected = !!intentKeyword && resolvedKeyword !== intentKeyword;
-  const cityCorrected    = !!rawCity       && resolvedCity    !== rawCity;
-  const isGlobalQuery    = !resolvedKeyword && isGlobalCity(resolvedCity) && (!intentCategory || intentCategory === 'All');
-
-  // ── 3. Build DB WHERE clause
+  // 3. Build Query Conditions
   const andConditions: any[] = [];
 
-  if (resolvedKeyword) {
-    const words = resolvedKeyword.trim().split(/\s+/).filter(Boolean);
+  // Keyword search (Artist/Venue) searches globally using the description fix
+  if (intentKeyword) {
+    const words = intentKeyword.trim().split(/\s+/).filter(Boolean);
     const wordConditions = words.map(word => ({
       OR: [
         { title:       { contains: word, mode: 'insensitive' } },
-        { description: { contains: word, mode: 'insensitive' } }, // Artist search via description
+        { description: { contains: word, mode: 'insensitive' } }, // Artist name caught here!
         { city:        { contains: word, mode: 'insensitive' } },
       ]
     }));
     andConditions.push(...wordConditions);
   }
 
+  // Category mapping
   if (intentCategory && intentCategory !== 'All') {
     const catMap: Record<string, string> = {
       Concerts: 'Music', Theater: 'Theatre',
@@ -214,239 +143,171 @@ export async function GET(request: Request) {
     });
   }
 
-  if (resolvedCity && !isGlobalCity(resolvedCity)) {
-    andConditions.push({ city: { contains: resolvedCity, mode: 'insensitive' } });
+  // City filter applied ONLY if explicitly requested and NOT a global term
+  if (rawCity && !isGlobalCity(rawCity)) {
+    andConditions.push({ city: { equals: rawCity.trim(), mode: 'insensitive' } });
   }
 
   const dbQuery = andConditions.length > 0 ? { AND: andConditions } : {};
 
-  // ── 4. Initialize Bots
+  // 4. Initialize bot pool in background
   getBotPool().catch(err => console.error('Bot pool warm failed:', err));
 
-  // ── 5. Sync Strategy
-  const syncKey = `${resolvedCity ?? 'global'}::${resolvedKeyword ?? ''}::${intentCategory ?? ''}`;
-
-  if (apiKey && !isSyncCoolingDown(syncKey)) {
-    markSynced(syncKey);
-    await syncExternalEvents(resolvedCity, resolvedKeyword, intentCategory, apiKey).catch(console.error);
-  }
-
-  const finalCount = await prisma.event.count({ where: dbQuery });
-
-  // ── 6. Response headers
-  const headers: Record<string, string> = {
-    'Content-Type':  'application/x-ndjson',
-    'Cache-Control': 'no-cache',
-    'Connection':    'keep-alive'
-  };
-  if (keywordCorrected && resolvedKeyword) {
-    headers['X-Corrected-Keyword'] = resolvedKeyword;
-    headers['X-Original-Keyword']  = rawKeyword!;
-  }
-  if (cityCorrected && resolvedCity) {
-    headers['X-Corrected-City'] = resolvedCity;
-  }
-
-  // ── 7. Stream
-  const encoder   = new TextEncoder();
-  const batchSize = 12;
-
+  // 5. Stream logic to handle UI pagination
+  const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const meta = {
-        __meta: true,
-        total:  finalCount,
-        query: {
-          keyword:  resolvedKeyword  ?? null,
-          city:     resolvedCity     ?? null,
-          category: intentCategory   ?? null,
-          isGlobal: isGlobalQuery,
-          correctedKeyword: keywordCorrected ? resolvedKeyword : null,
-          correctedCity:    cityCorrected    ? resolvedCity    : null
-        }
-      };
-      controller.enqueue(encoder.encode(JSON.stringify(meta) + '\n'));
-
-      if (finalCount === 0) {
-        controller.close();
-        return;
-      }
-
-      let skip    = 0;
+      let skip = 0;
+      const batchSize = 12; 
       let hasMore = true;
-      const sizes = [6, ...Array(200).fill(batchSize)];
 
       try {
-        for (const take of sizes) {
-          if (!hasMore) break;
-
+        while (hasMore) {
           const batch = await prisma.event.findMany({
             where: dbQuery,
             include: {
               ticketBatches: {
-                where:   { quantity: { gt: 0 } },
-                include: {
-                  seller: {
-                    select: { id: true, name: true, avatarUrl: true, isBot: true }
-                  }
-                },
-                orderBy: { price: 'asc' }
-              }
+                where: { quantity: { gt: 0 } },
+                include: { seller: { select: { name: true, avatarUrl: true, isBot: true } } },
+                orderBy: { price: 'asc' },
+              },
             },
             orderBy: [{ isFeatured: 'desc' }, { date: 'asc' }],
-            take,
-            skip
+            take: batchSize,
+            skip: skip,
           });
 
           if (batch.length === 0) {
             hasMore = false;
           } else {
-            const formatted = batch.map(({ ticketBatches, ...rest }) => ({
-              ...rest,
-              listings: ticketBatches.map(tb => ({
-                id:          tb.id,
-                price:       tb.price,
-                quantity:    tb.quantity,
-                ticketsSold: tb.ticketsSold,
-                seller:      tb.seller
-              }))
+            const formattedBatch = batch.map(event => ({
+              ...event,
+              listings: event.ticketBatches, 
+              ticketBatches: undefined 
             }));
 
-            controller.enqueue(encoder.encode(JSON.stringify(formatted) + '\n'));
-            skip += take;
+            const chunk = JSON.stringify(formattedBatch) + "\n";
+            controller.enqueue(encoder.encode(chunk));
+            skip += batchSize;
           }
         }
-      } catch (err) {
-        console.error('Stream error:', err);
-        controller.enqueue(
-          encoder.encode(JSON.stringify({ __error: 'Stream interrupted' }) + '\n')
-        );
+      } catch (error) {
+        console.error("Stream Error:", error);
       } finally {
         controller.close();
       }
     }
   });
 
-  return new Response(stream, { headers });
+  return new Response(stream, {
+    headers: { 
+      "Content-Type": "application/x-ndjson",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive"
+    },
+  });
 }
 
-// ─── TICKETMASTER SYNC ───────────────────────────────────────────────────
+// ─── UPGRADED TICKETMASTER AGGREGATOR ────────────────────────────────────
 async function syncExternalEvents(
-  targetCity: string | null,
-  keyword:    string | null,
-  category:   string | null,
-  apiKey:     string
+  targetCity: string | null, 
+  keyword: string | null, 
+  category: string | null,
+  apiKey: string
 ) {
   try {
-    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&size=100`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    if (keyword) {
-      tmUrl += `&keyword=${encodeURIComponent(keyword)}`;
-    }
+    let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&size=50`;
     
-    if (targetCity && !isGlobalCity(targetCity)) {
-      tmUrl += `&city=${encodeURIComponent(targetCity)}`;
-    }
-
+    // 🛠 GLOBAL & CATEGORY QUERY LOGIC
+    if (keyword) {
+      tmUrl += `&keyword=${encodeURIComponent(keyword)}&sort=relevance,desc`;
+    } 
+    
     if (category && category !== 'All') {
       const catMap: Record<string, string> = {
         Concerts: 'Music', Theater: 'Arts & Theatre',
-        Comedy:   'Comedy', Sports: 'Sports', Sport: 'Sports'
+        Comedy: 'Comedy', Sports: 'Sports', Sport: 'Sports'
       };
-     
+      
       if (category === 'Festivals') {
         if (!keyword) tmUrl += `&keyword=Festival`;
       } else {
-        tmUrl += `&classificationName=${encodeURIComponent(catMap[category] ?? category)}`;
+        tmUrl += `&classificationName=${encodeURIComponent(catMap[category] ?? category)}`; 
       }
+    } 
+    
+    if (targetCity && !isGlobalCity(targetCity)) {
+      tmUrl += `&city=${encodeURIComponent(targetCity)}`;
+    } 
+
+    // Sort by date if no keyword is present, otherwise relevance
+    if (!keyword) {
+        tmUrl += `&sort=date,asc`;
     }
 
-    if (keyword || (!targetCity && (!category || category === 'All'))) {
-      tmUrl += `&sort=relevance,desc`;
-    } else {
-      tmUrl += `&sort=date,asc`;
-    }
+    const response = await fetch(tmUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
 
-    const res = await fetch(tmUrl, { signal: AbortSignal.timeout(15000) });
-    if (!res.ok) return;
+    if (!response.ok) return;
 
-    const data       = await res.json();
-    const liveEvents = (data._embedded?.events ?? []) as any[];
+    const data = await response.json();
+    const liveEvents = data._embedded?.events || [];
     if (liveEvents.length === 0) return;
-
-    const candidateTitles = liveEvents
-      .filter(e => (e.dates?.status?.code as string)?.toLowerCase() !== 'cancelled')
-      .filter(e => e.priceRanges?.[0]?.min != null)
-      .map(e => (e.name as string)?.substring(0, 250) || 'Live Event');
-
-    const alreadyInDb = new Set(
-      (await prisma.event.findMany({
-        where:  { title: { in: candidateTitles } },
-        select: { title: true }
-      })).map(e => e.title)
-    );
 
     const botPool = await getBotPool();
 
     for (const extEvent of liveEvents) {
-      const statusCode = (extEvent.dates?.status?.code as string)?.toLowerCase();
-      if (statusCode === 'cancelled') continue;
+      // Skip cancelled events and events without prices
+      if (extEvent.dates?.status?.code?.toLowerCase() === 'cancelled') continue;
+      if (!extEvent.priceRanges?.[0]?.min) continue;
 
-      const priceRange = extEvent.priceRanges?.[0];
-      if (!priceRange?.min) continue;
-
-      const title = (extEvent.name as string)?.substring(0, 250) || 'Live Event';
-      if (alreadyInDb.has(title)) continue;
-
-      const basePrice   = Number(Number(priceRange.min).toFixed(2));
-      const catName     = extEvent.classifications?.[0]?.segment?.name || 'Live Event';
-      const actualCity  = extEvent._embedded?.venues?.[0]?.city?.name  || (isGlobalCity(targetCity) ? 'Global' : targetCity) || 'Global';
-      const venueName   = extEvent._embedded?.venues?.[0]?.name        || 'TBA';
-      const imageUrl    =
-        extEvent.images?.find((img: any) => img.ratio === '16_9' && img.width >= 1024)?.url ||
-        extEvent.images?.[0]?.url ||
-        'https://images.unsplash.com/photo-1540575861501-7cf05a4b125a?q=80&w=1000';
-
+      const title = extEvent.name?.substring(0, 250) || "Live Event";
+      const catName = extEvent.classifications?.[0]?.segment?.name || "Live Event";
+      const actualCity = extEvent._embedded?.venues?.[0]?.city?.name || (isGlobalCity(targetCity) ? "Global" : targetCity) || "Global";
+      const venueName = extEvent._embedded?.venues?.[0]?.name || 'TBA';
       const eventDateString = extEvent.dates?.start?.dateTime || extEvent.dates?.start?.localDate;
-      const date = eventDateString
-        ? new Date(eventDateString)
-        : new Date(Date.now() + 86_400_000 * 7);
+      const date = eventDateString ? new Date(eventDateString) : new Date(Date.now() + 86400000 * 7);
+      const imageUrl = 
+        extEvent.images?.find((img: any) => img.ratio === '16_9' && img.width >= 1024)?.url || 
+        extEvent.images?.[0]?.url || 
+        "https://images.unsplash.com/photo-1540575861501-7cf05a4b125a?q=80&w=1000";
+      
+      const basePrice = Number(extEvent.priceRanges[0].min.toFixed(2)); 
 
-      // Extracts artist/attraction names directly from Ticketmaster
-      const attractions = extEvent._embedded?.attractions
-        ?.map((a: any) => a.name)
-        .join(', ');
-
+      // 🔥 ARTIST/ATTRACTION FIX: Inject artists directly into the description
+      const attractions = extEvent._embedded?.attractions?.map((a: any) => a.name).join(', ');
       const description = `${catName} at ${venueName}${attractions ? ` • Feat. ${attractions}` : ''}`;
 
-      const newEvent = await prisma.event.create({
-        data: {
-          title,
-          description,
-          date,
-          city:        actualCity,
-          country:     'GLOBAL',
-          basePrice,
-          imageUrl,
-          isFeatured:  false
-        }
+      const existingEvent = await prisma.event.findFirst({
+        where: { title, city: actualCity }
       });
 
-      const numSellers   = Math.floor(Math.random() * 5) + 3;
-      const assignedBots = [...botPool].sort(() => Math.random() - 0.5).slice(0, numSellers);
+      if (!existingEvent) {
+        const newEvent = await prisma.event.create({
+          data: { title, description, date, city: actualCity, country: 'GLOBAL', basePrice, imageUrl, isFeatured: false }
+        });
 
-      await prisma.ticketBatch.createMany({
-        data: assignedBots.map(botId => ({
-          eventId:  newEvent.id,
-          sellerId: botId,
-          price:    basePrice,
-          quantity: Math.floor(Math.random() * 4) + 1
-        }))
-      });
+        // Use the Bot Pool instead of creating new records every time
+        const numSellers = Math.floor(Math.random() * 6) + 3;
+        const assignedBots = [...botPool].sort(() => Math.random() - 0.5).slice(0, numSellers);
 
-      alreadyInDb.add(title);
+        const batchesData = assignedBots.map((botId) => {
+          const variation = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * 15);
+          return {
+            eventId: newEvent.id,
+            sellerId: botId,
+            price: basePrice + variation,
+            quantity: Math.floor(Math.random() * 4) + 1,
+          };
+        });
+
+        await prisma.ticketBatch.createMany({ data: batchesData });
+      }
     }
-  } catch (err) {
-    console.error('TM Sync error:', err instanceof Error ? err.message : err);
+  } catch (error) {
+    console.error("Ticketmaster Sync Suppressed:", error instanceof Error ? error.message : "Timeout");
   }
-                             }
+            }
