@@ -1,7 +1,7 @@
 // app/admin/orders/page.tsx
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { Clock, CheckCircle2, XCircle, FileImage, ShieldCheck, Ticket } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, FileImage, ShieldCheck, Ticket, AlertTriangle } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,10 +22,6 @@ async function rejectOrder(formData: FormData) {
   const order = await prisma.order.findUnique({ where: { id: orderId } });
 
   if (order) {
-    // 🛠 FIX: Replaced prisma.$transaction([...]) with the callback form.
-    //    MongoDB does NOT support the array/batch transaction syntax —
-    //    only relational DBs (Postgres, MySQL) do. The interactive
-    //    callback form works on both MongoDB and SQL.
     await prisma.$transaction(async (tx) => {
       await tx.order.update({
         where: { id: orderId },
@@ -43,8 +39,40 @@ async function rejectOrder(formData: FormData) {
   revalidatePath('/admin/orders');
 }
 
+// 🛠 NEW: Permanently delete orphaned orders (orders whose ticketBatch was deleted).
+//         Run this from the Admin UI to clean up the database.
+async function cleanOrphanedOrders(formData: FormData) {
+  'use server';
+
+  // 1. Get all ticketBatch IDs that actually exist
+  const validBatches = await prisma.ticketBatch.findMany({ select: { id: true } });
+  const validIds = validBatches.map((b) => b.id);
+
+  // 2. Delete every order whose ticketBatchId is NOT in that set
+  await prisma.order.deleteMany({
+    where: { ticketBatchId: { notIn: validIds } }
+  });
+
+  revalidatePath('/admin/orders');
+}
+
 export default async function AdminOrdersPage() {
+  // 🛠 FIX: Two-step fetch to avoid PrismaClientUnknownRequestError.
+  //
+  //    Root cause: some Order documents in MongoDB have a ticketBatchId
+  //    pointing to a TicketBatch that no longer exists (orphaned reference).
+  //    Prisma treats the relation as required and throws instead of returning null.
+  //
+  //    Solution: fetch only the IDs of TicketBatches that actually exist,
+  //    then filter Orders to that set BEFORE Prisma tries to resolve the join.
+
+  // Step 1 — collect all live ticketBatch IDs
+  const validBatches = await prisma.ticketBatch.findMany({ select: { id: true } });
+  const validBatchIds = validBatches.map((b) => b.id);
+
+  // Step 2 — query orders restricted to those IDs
   const orders = await prisma.order.findMany({
+    where: { ticketBatchId: { in: validBatchIds } },   // ← the key guard
     orderBy: { createdAt: 'desc' },
     include: {
       ticketBatch: {
@@ -55,6 +83,10 @@ export default async function AdminOrdersPage() {
       }
     }
   });
+
+  // Count orphans so we can warn the admin
+  const allOrderCount = await prisma.order.count();
+  const orphanCount = allOrderCount - orders.length;
 
   return (
     <div className="space-y-8">
@@ -68,6 +100,27 @@ export default async function AdminOrdersPage() {
           <p className="text-zinc-500 font-medium mt-2">Verify user receipts and release locked tickets.</p>
         </div>
       </div>
+
+      {/* 🛠 NEW: Orphan warning banner — only shown when orphaned orders exist */}
+      {orphanCount > 0 && (
+        <div className="flex items-center justify-between gap-4 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl px-6 py-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0" />
+            <p className="text-yellow-300 text-sm font-bold">
+              {orphanCount} orphaned order{orphanCount > 1 ? 's' : ''} hidden —
+              linked to deleted ticket batches and excluded from this table.
+            </p>
+          </div>
+          <form action={cleanOrphanedOrders}>
+            <button
+              type="submit"
+              className="bg-yellow-400 text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-yellow-300 transition whitespace-nowrap"
+            >
+              Delete Orphans
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* Orders Table */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl relative">
@@ -191,4 +244,4 @@ export default async function AdminOrdersPage() {
       </div>
     </div>
   );
-                        }
+                      }
