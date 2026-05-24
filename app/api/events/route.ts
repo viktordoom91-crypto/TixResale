@@ -354,13 +354,13 @@ export async function GET(request: Request) {
   if (existingCount > 0) {
     if (apiKey && !isSyncCoolingDown(syncKey)) {
       markSynced(syncKey);
-      syncExternalEvents(resolvedCity, rawState, resolvedCountryCode, resolvedKeyword, rawCategory, apiKey)
+      syncExternalEvents(resolvedCity, rawState, resolvedCountryCode, resolvedKeyword, rawCategory, apiKey, rawCountry)
         .catch(console.error);
     }
   } else {
     if (apiKey) {
       markSynced(syncKey);
-      await syncExternalEvents(resolvedCity, rawState, resolvedCountryCode, resolvedKeyword, rawCategory, apiKey)
+      await syncExternalEvents(resolvedCity, rawState, resolvedCountryCode, resolvedKeyword, rawCategory, apiKey, rawCountry)
         .catch(console.error);
     }
   }
@@ -455,12 +455,13 @@ export async function GET(request: Request) {
 
 // ─── TICKETMASTER MULTI-PASS SYNC ─────────────────────────────────────────────
 async function syncExternalEvents(
-  targetCity:    string | null,
-  targetState:   string | null,
-  countryCode:   string | null,
-  keyword:       string | null,
-  category:      string | null,
-  apiKey:        string,
+  targetCity:         string | null,
+  targetState:        string | null,
+  countryCode:        string | null,
+  keyword:            string | null,
+  category:           string | null,
+  apiKey:             string,
+  targetCountryName:  string | null = null,
 ) {
   try {
     const BASE = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}`;
@@ -565,7 +566,7 @@ async function syncExternalEvents(
       const basePrice  = Number(Number(priceRange.min).toFixed(2));
       const venue      = extEvent._embedded?.venues?.[0];
       const actualCity = venue?.city?.name  || targetCity || 'Global';
-      const country    = venue?.country?.name || rawCountry || 'Global';
+      const country    = venue?.country?.name || targetCountryName || 'Global';
       const venueName  = venue?.name          || 'TBA';
 
       // Best image: prefer 16:9 >= 1024px wide
