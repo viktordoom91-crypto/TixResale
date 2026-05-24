@@ -236,11 +236,11 @@ export default function CreateEventPage() {
           </div>
           <div className="md:col-span-2">
             <label className="block text-sm font-bold text-gray-700 mb-1 flex items-center gap-2">
-              <Tag className="w-4 h-4" /> Base Price (₦)
+              <Tag className="w-4 h-4" /> Base Price ($)
             </label>
             <input
-              required type="number" min="0" step="100"
-              placeholder="e.g., 25000"
+              required type="number" min="0" step="5"
+              placeholder="e.g., 2500"
               className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none font-medium transition-all"
               value={formData.basePrice}
               onChange={(e) => setFormData({ ...formData, basePrice: e.target.value })}
