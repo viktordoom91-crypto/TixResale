@@ -539,7 +539,6 @@ async function syncExternalEvents(
     // ── Filter & deduplicate against DB ───────────────────────────────────────
     const candidateTitles = allEvents
       .filter(e => (e.dates?.status?.code as string)?.toLowerCase() !== 'cancelled')
-      .filter(e => e.priceRanges?.[0]?.min != null)
       .map(e => (e.name as string)?.substring(0, 250) || 'Live Event');
 
     const alreadyInDb = new Set(
@@ -556,14 +555,18 @@ async function syncExternalEvents(
       const statusCode = (extEvent.dates?.status?.code as string)?.toLowerCase();
       if (statusCode === 'cancelled') continue;
 
-      // Price guard
-      const priceRange = extEvent.priceRanges?.[0];
-      if (!priceRange?.min) continue;
-
       const title = (extEvent.name as string)?.substring(0, 250) || 'Live Event';
       if (alreadyInDb.has(title)) continue;
 
-      const basePrice  = Number(Number(priceRange.min).toFixed(2));
+      // Use TM price when available; fall back to a sensible default by segment
+      // (Many TM events — especially UK/EU and major artists — omit priceRanges entirely)
+      const priceMin = extEvent.priceRanges?.[0]?.min;
+      const segment  = extEvent.classifications?.[0]?.segment?.name?.toLowerCase() ?? '';
+      const fallback = segment.includes('sport') ? 65
+                     : segment.includes('music') ? 75
+                     : segment.includes('arts')  ? 45
+                     : 50;
+      const basePrice = priceMin != null ? Number(Number(priceMin).toFixed(2)) : fallback;
       const venue      = extEvent._embedded?.venues?.[0];
       const actualCity = venue?.city?.name  || targetCity || 'Global';
       const country    = venue?.country?.name || targetCountryName || 'Global';
