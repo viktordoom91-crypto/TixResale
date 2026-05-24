@@ -25,18 +25,18 @@ const EVENT_CATEGORIES = [
 async function updateEvent(formData: FormData) {
   'use server';
 
-  const id          = formData.get('eventId')     as string;
-  const title       = formData.get('title')        as string;
-  const description = formData.get('description')  as string;
-  const city        = formData.get('city')          as string;
-  const location    = formData.get('location')      as string;
-  const category    = formData.get('category')      as string;
-  const dateString  = formData.get('date')          as string; // "YYYY-MM-DD"
-  const timeString  = formData.get('time')          as string; // "HH:MM"
+  const id          = formData.get('eventId')    as string;
+  const title       = formData.get('title')       as string;
+  const description = formData.get('description') as string;
+  const city        = formData.get('city')         as string;
+  const location    = formData.get('location')     as string;
+  const category    = formData.get('category')     as string;
+  const dateString  = formData.get('date')         as string; // "YYYY-MM-DD"
+  const timeString  = formData.get('time')         as string; // "HH:MM"
   const basePrice   = parseFloat(formData.get('basePrice') as string);
-  const imageUrl    = formData.get('imageUrl')      as string;
+  const imageUrl    = formData.get('imageUrl')     as string;
 
-  // Combine date + time into a single Date object
+  // Combine separate date + time fields into one ISO datetime string
   const combinedISO = dateString && timeString
     ? `${dateString}T${timeString}:00`
     : dateString
@@ -49,6 +49,90 @@ async function updateEvent(formData: FormData) {
       title,
       description,
       city,
+      // ✅ These fields now exist in your schema after the migration
+      location: location || null,
+      category: category || null,
+      date:     combinedISO ? new Date(combinedISO) : undefined,
+      basePrice,
+      imageUrl: imageUrl || null,
+    },
+  });
+
+  revalidatePath('/admin/events');
+  revalidatePath(`/admin/events/${id}/edit`);
+  revalidatePath('/');
+  redirect('/admin/events');
+}
+
+// ---------------------------------------------------------------------------
+// SERVER ACTION: DELETE EVENT
+// ---------------------------------------------------------------------------
+async function deleteEvent(formData: FormData) {
+  'use server';
+
+  const id = formData.get('eventId') as string;
+  await prisma.event.delete({ where: { id } });
+
+  revalidatePath('/admin/events');
+  revalidatePath('/');
+  redirect('/admin/events');
+}
+
+// ---------------------------------------------------------------------------
+// PAGE
+// ---------------------------------------------------------------------------
+// app/admin/events/[id]/edit/page.tsx
+import { prisma } from '@/lib/prisma';
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import {
+  Save, ArrowLeft, Ticket, MapPin, Calendar,
+  Image as ImageIcon, FileText, DollarSign, Trash2,
+  Clock, Layers
+} from 'lucide-react';
+
+export const dynamic = 'force-dynamic';
+
+const EVENT_CATEGORIES = [
+  { value: 'concert',  label: 'Concert / Artist Tour', emoji: '🎤' },
+  { value: 'festival', label: 'Festival',               emoji: '🎪' },
+  { value: 'comedy',   label: 'Comedy Show',            emoji: '😂' },
+  { value: 'sports',   label: 'Sports',                 emoji: '🏟️' },
+  { value: 'theater',  label: 'Theater',                emoji: '🎭' },
+];
+
+// ---------------------------------------------------------------------------
+// SERVER ACTION: UPDATE EVENT
+// ---------------------------------------------------------------------------
+async function updateEvent(formData: FormData) {
+  'use server';
+
+  const id          = formData.get('eventId')    as string;
+  const title       = formData.get('title')       as string;
+  const description = formData.get('description') as string;
+  const city        = formData.get('city')         as string;
+  const location    = formData.get('location')     as string;
+  const category    = formData.get('category')     as string;
+  const dateString  = formData.get('date')         as string; // "YYYY-MM-DD"
+  const timeString  = formData.get('time')         as string; // "HH:MM"
+  const basePrice   = parseFloat(formData.get('basePrice') as string);
+  const imageUrl    = formData.get('imageUrl')     as string;
+
+  // Combine separate date + time fields into one ISO datetime string
+  const combinedISO = dateString && timeString
+    ? `${dateString}T${timeString}:00`
+    : dateString
+      ? `${dateString}T00:00:00`
+      : null;
+
+  await prisma.event.update({
+    where: { id },
+    data: {
+      title,
+      description,
+      city,
+      // ✅ These fields now exist in your schema after the migration
       location: location || null,
       category: category || null,
       date:     combinedISO ? new Date(combinedISO) : undefined,
@@ -94,10 +178,10 @@ export default async function EditEventPage({ params }: { params: { id: string }
     );
   }
 
-  // Split stored datetime into separate date and time strings for the inputs
-  const eventDate   = new Date(event.date);
-  const formattedDate = eventDate.toISOString().slice(0, 10);           // "YYYY-MM-DD"
-  const formattedTime = eventDate.toTimeString().slice(0, 5);           // "HH:MM"
+  // Split stored DateTime into separate date/time strings for the HTML inputs
+  const eventDate     = new Date(event.date);
+  const formattedDate = eventDate.toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const formattedTime = eventDate.toTimeString().slice(0, 5);  // "HH:MM"
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-300 font-sans pb-24 selection:bg-lime-500 selection:text-black">
@@ -160,8 +244,6 @@ export default async function EditEventPage({ params }: { params: { id: string }
               <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2">
                 <Layers className="w-3.5 h-3.5 text-lime-400" /> Category
               </label>
-              {/* Hidden input carries the selected value to the server action */}
-              <input type="hidden" name="category" id="category-hidden" defaultValue={(event as any).category || ''} />
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                 {EVENT_CATEGORIES.map((cat) => (
                   <label
@@ -170,11 +252,12 @@ export default async function EditEventPage({ params }: { params: { id: string }
                       border-zinc-700 text-zinc-400 hover:border-lime-500/50 hover:text-lime-300
                       has-[:checked]:border-lime-500 has-[:checked]:bg-lime-500/10 has-[:checked]:text-lime-300"
                   >
+                    {/* ✅ uses event.category directly — no more (event as any) */}
                     <input
                       type="radio"
                       name="category"
                       value={cat.value}
-                      defaultChecked={(event as any).category === cat.value}
+                      defaultChecked={event.category === cat.value}
                       className="sr-only"
                     />
                     <span className="text-xl">{cat.emoji}</span>
@@ -223,8 +306,9 @@ export default async function EditEventPage({ params }: { params: { id: string }
                 <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2">
                   <MapPin className="w-3.5 h-3.5 text-lime-400" /> Venue / Location
                 </label>
+                {/* ✅ event.location is now a real typed field */}
                 <input
-                  type="text" name="location" defaultValue={(event as any).location || ''}
+                  type="text" name="location" defaultValue={event.location ?? ''}
                   placeholder="e.g., Eko Convention Centre"
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-lime-500 focus:ring-1 focus:ring-lime-500 transition-all placeholder-zinc-700"
                 />
@@ -242,17 +326,7 @@ export default async function EditEventPage({ params }: { params: { id: string }
 
             </div>
 
-            {/* ── Image ── */}
-            {/*
-              The edit page uses a plain URL input so it works as a Server Component
-              (no useState). If you want Cloudinary upload here too, convert this
-              section into a separate 'use client' component that uploads to Cloudinary
-              and then POSTs the resulting URL back via a hidden input before submitting.
-
-              Quick pattern:
-                <ImageUploader defaultUrl={event.imageUrl} />   ← client component
-              It sets a hidden input `name="imageUrl"` once the upload is complete.
-            */}
+            {/* ── Image URL ── */}
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2">
                 <ImageIcon className="w-3.5 h-3.5 text-lime-400" /> Image URL
@@ -265,7 +339,7 @@ export default async function EditEventPage({ params }: { params: { id: string }
                 />
               )}
               <input
-                type="url" name="imageUrl" defaultValue={event.imageUrl || ''}
+                type="url" name="imageUrl" defaultValue={event.imageUrl ?? ''}
                 placeholder="https://res.cloudinary.com/..."
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-lime-500 focus:ring-1 focus:ring-lime-500 transition-all placeholder-zinc-700"
               />
@@ -280,12 +354,12 @@ export default async function EditEventPage({ params }: { params: { id: string }
                 <FileText className="w-3.5 h-3.5 text-lime-400" /> Description / Venue Info
               </label>
               <textarea
-                name="description" defaultValue={event.description || ''} rows={4}
+                name="description" defaultValue={event.description ?? ''} rows={4}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-lime-500 focus:ring-1 focus:ring-lime-500 transition-all placeholder-zinc-700 resize-none"
               />
             </div>
 
-            {/* ── Save ── */}
+            {/* ── Save / Cancel ── */}
             <div className="pt-8 border-t border-zinc-800 flex flex-col sm:flex-row justify-end gap-4">
               <Link
                 href="/admin/events"
@@ -306,4 +380,111 @@ export default async function EditEventPage({ params }: { params: { id: string }
       </main>
     </div>
   );
-      }
+}￼Enter default async function EditEventPage({ params }: { params: { id: string } }) {
+  const event = await prisma.event.findUnique({ where: { id: params.id } });
+
+  if (!event) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-white">
+        <h1 className="text-2xl font-black uppercase tracking-widest mb-4">Event Not Found</h1>
+        <Link href="/admin/events" className="text-lime-400 hover:underline font-bold">
+          Return to Events
+        </Link>
+      </div>
+    );
+  }
+
+  // Split stored DateTime into separate date/time strings for the HTML inputs
+  const eventDate     = new Date(event.date);
+  const formattedDate = eventDate.toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const formattedTime = eventDate.toTimeString().slice(0, 5);  // "HH:MM"
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-300 font-sans pb-24 selection:bg-lime-500 selection:text-black">
+
+      {/* ── Header ── */}
+      <header className="bg-zinc-950 border-b border-zinc-900 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/admin/events"
+              className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-lime-500/50 hover:text-lime-400 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white uppercase">Edit Event</h1>
+              <p className="text-zinc-500 font-medium mt-1 text-sm">ID: {event.id}</p>
+            </div>
+          </div>
+
+          {/* Delete */}
+          <form
+            action={deleteEvent}
+            onSubmit={(e) => {
+              if (!confirm('Permanently delete this event and all its tickets?')) e.preventDefault();
+            }}
+          >
+            <input type="hidden" name="eventId" value={event.id} />
+            <button
+              type="submit"
+              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500 hover:text-white transition-all text-xs font-black uppercase tracking-widest"
+            >
+              <Trash2 className="w-4 h-4" /> Delete
+            </button>
+          </form>
+        </div>
+      </header>
+
+      {/* ── Main ── */}
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-12">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-10 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-lime-500/5 blur-[80px] rounded-full pointer-events-none" />
+
+          <form action={updateEvent} className="space-y-8 relative z-10">
+            <input type="hidden" name="eventId" value={event.id} />
+
+            {/* ── Title ── */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2">
+                <Ticket className="w-3.5 h-3.5 text-lime-400" /> Event Title
+              </label>
+              <input
+                required type="text" name="title" defaultValue={event.title}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-lime-500 focus:ring-1 focus:ring-lime-500 transition-all placeholder-zinc-700"
+              />
+            </div>
+
+            {/* ── Category ── */}
+            <div className="space-y-3">
+              <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2">
+                <Layers className="w-3.5 h-3.5 text-lime-400" /> Category
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                {EVENT_CATEGORIES.map((cat) => (
+                  <label
+                    key={cat.value}
+                    className="flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl border-2 cursor-pointer transition-all
+                      border-zinc-700 text-zinc-400 hover:border-lime-500/50 hover:text-lime-300
+                      has-[:checked]:border-lime-500 has-[:checked]:bg-lime-500/10 has-[:checked]:text-lime-300"
+                  >
+                    {/* ✅ uses event.category directly — no more (event as any) */}
+                    <input
+                      type="radio"
+                      name="category"
+                      value={cat.value}
+                      defaultChecked={event.category === cat.value}
+                      className="sr-only"
+                    />
+                    <span className="text-xl">{cat.emoji}</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center leading-tight">
+                      {cat.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Date / Time / City / Location / Price ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
