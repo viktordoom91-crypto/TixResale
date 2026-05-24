@@ -65,7 +65,7 @@ export default function Footer() {
 
         {/* Bottom Bar: Copyright & Socials */}
         <div className="py-8 border-t border-zinc-900 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0 text-xs text-zinc-600 font-black uppercase tracking-widest">
-          <p>© 2018-2026 Salex Pty Ltd. ACN 625 710 581</p>
+          <p>© 2018-2026 Tixresale Pty Ltd. ACN 625 710 581</p>
           <div className="flex space-x-6">
             <a href="#" className="hover:text-lime-400 transition-colors"><span className="text-lg">f</span></a>
             <a href="#" className="hover:text-lime-400 transition-colors"><span className="text-lg">𝕏</span></a>
