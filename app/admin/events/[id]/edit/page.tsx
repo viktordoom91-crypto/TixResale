@@ -72,13 +72,8 @@ async function deleteEvent(formData: FormData) {
 }
 
 // Next.js 15+: params is a Promise
-export default async function EditEventPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-
   const event = await prisma.event.findUnique({ where: { id } });
 
   if (!event) {
