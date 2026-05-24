@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldCheck, Zap, Tag, MapPin, Calendar, Music, Tent, Ticket, Trophy, Search, Loader2, Radar, CheckCircle2, TrendingUp, Star, Mail, SearchCheck, Mic, Percent, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react';
-
 // 🛠 Import the dynamic currency formatter
 import { useCurrency } from './components/CurrencyProvider';
 
@@ -46,7 +45,6 @@ function HomeContent() {
 
   // Initialize currency formatter
   const { formatPrice } = useCurrency();
-
   const [data, setData] = useState<{ events: Event[]; count: number; location: { city: string } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false); 
@@ -58,9 +56,15 @@ function HomeContent() {
   const [currentHero, setCurrentHero] = useState(0);
   const [rotation, setRotation] = useState(0);
   const [visibleLimit, setVisibleLimit] = useState(6);
-  
-  // 🚀 PAGINATION STATE FOR LARGE DATASETS
+
+  // 🚀 META & PAGINATION STATE
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchMeta, setSearchMeta] = useState<{
+    total: number;
+    correctedKeyword: string | null;
+    correctedCity: string | null;
+    isGlobal: boolean;
+  } | null>(null);
 
   // Reset pagination to page 1 whenever search filters alter to capture full fresh tours
   useEffect(() => {
@@ -101,6 +105,7 @@ function HomeContent() {
     async function fetchStreamedEvents() {
       setLoading(true);
       setIsStreaming(true);
+      setSearchMeta(null); // Reset meta on new query
       
       // Default to 'Global' if no city is specified to unlock worldwide queries
       setData({ events: [], count: 0, location: { city: cityParam || 'Global' } });
@@ -118,6 +123,7 @@ function HomeContent() {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let accumulatedEvents: Event[] = [];
+       
         let streamBuffer = ''; // Buffer to solve mid-packet string splitting bugs
 
         while (true) {
@@ -133,11 +139,31 @@ function HomeContent() {
           for (const line of lines) {
             if (line.trim() === "") continue;
             try {
-              const newEvents = JSON.parse(line);
-              if (Array.isArray(newEvents)) {
-                accumulatedEvents = [...accumulatedEvents, ...newEvents];
+              const parsed = JSON.parse(line);
+
+              // ── Handle __meta frame (first line of every stream response) ──
+              if (parsed.__meta) {
+                setSearchMeta({
+                  total:            parsed.total,
+                  correctedKeyword: parsed.query.correctedKeyword,
+                  correctedCity:    parsed.query.correctedCity,
+                  isGlobal:         parsed.query.isGlobal,
+                });
+                setLoading(false); // We know the total now — safe to stop the skeleton
+                continue;
+              }
+
+              // ── Handle stream errors ────────────────────────────────────────
+              if (parsed.__error) {
+                console.warn('Stream error from server:', parsed.__error);
+                continue;
+              }
+
+              // ── Handle event batches ────────────────────────────────────────
+              if (Array.isArray(parsed)) {
+                accumulatedEvents = [...accumulatedEvents, ...parsed];
               } else {
-                accumulatedEvents.push(newEvents);
+                accumulatedEvents.push(parsed);
               }
               
               if (isMounted) {
@@ -288,7 +314,7 @@ function HomeContent() {
                 <img src={activeHero.imageUrl || ''} alt="Hero" className="w-full h-full object-cover opacity-60 grayscale-[30%]" />
                 
                 <div className="absolute bottom-0 left-0 w-full p-8 z-20 max-w-[1200px] mx-auto">
-                  <motion.span initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="inline-block px-3 py-1 bg-lime-500/10 text-lime-400 border border-lime-500/20 text-xs font-black uppercase tracking-widest mb-4 backdrop-blur-md">
+                 <motion.span initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="inline-block px-3 py-1 bg-lime-500/10 text-lime-400 border border-lime-500/20 text-xs font-black uppercase tracking-widest mb-4 backdrop-blur-md">
                     {activeCategory !== 'All' ? `Global Trending ${activeCategory}` : `Trending in ${currentCity}`}
                   </motion.span>
                   <motion.h1 initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }} className="text-5xl md:text-7xl font-black text-white uppercase tracking-tighter mb-4 leading-tight line-clamp-2">
@@ -305,7 +331,7 @@ function HomeContent() {
         )}
 
         <div className="absolute top-8 left-0 w-full z-30 px-4">
-          <form onSubmit={handleSearch} className="relative max-w-2xl mx-auto">
+         <form onSubmit={handleSearch} className="relative max-w-2xl mx-auto">
             <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
             <input
               type="text"
@@ -375,10 +401,10 @@ function HomeContent() {
                         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
                         
                         <div className="absolute bottom-6 left-6 right-6">
-                          <span className="inline-block px-3 py-1 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-full text-[10px] font-black uppercase tracking-widest mb-3">
+                           <span className="inline-block px-3 py-1 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-full text-[10px] font-black uppercase tracking-widest mb-3">
                             {item.category}
                           </span>
-                          <p className="font-black text-white text-2xl uppercase tracking-tighter leading-tight group-hover:text-lime-400 transition-colors drop-shadow-lg line-clamp-2">
+                         <p className="font-black text-white text-2xl uppercase tracking-tighter leading-tight group-hover:text-lime-400 transition-colors drop-shadow-lg line-clamp-2">
                             {item.name}
                           </p>
                         </div>
@@ -387,7 +413,7 @@ function HomeContent() {
                   ))}
                 </motion.div>
               )}
-            </AnimatePresence>
+             </AnimatePresence>
           </div>
 
           <div className="lg:col-span-5">
@@ -402,7 +428,7 @@ function HomeContent() {
             </div>
 
             <AnimatePresence mode="wait">
-              {loading && dynamicArtists.length === 0 ? (
+               {loading && dynamicArtists.length === 0 ? (
                 <motion.div key="skeleton-artists" className="flex overflow-x-auto gap-6 pb-8 pt-4 px-2 -mx-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                   {[1, 2, 3, 4, 5].map(n => (
                     <div key={n} className="flex-shrink-0 flex flex-col items-center w-28">
@@ -446,7 +472,7 @@ function HomeContent() {
         <div className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-xl py-4 border-b border-zinc-900 mb-8">
           <div className="flex overflow-x-auto hide-scrollbar gap-3 pb-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {CATEGORIES.map((tab) => {
-              const Icon = tab.icon;
+               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id} onClick={() => setActiveCategory(tab.id)}
@@ -455,7 +481,7 @@ function HomeContent() {
                   {activeCategory === tab.id && (
                     <motion.div layoutId="cat-bg" className="absolute inset-0 bg-lime-400 rounded-full" transition={{ type: "spring", stiffness: 500, damping: 35 }} />
                   )}
-                  <Icon className="w-4 h-4 relative z-10" />
+                   <Icon className="w-4 h-4 relative z-10" />
                   <span className="relative z-10 uppercase tracking-widest text-xs">{tab.label}</span>
                 </button>
               )
@@ -477,7 +503,7 @@ function HomeContent() {
                 key={dateObj.id} 
                 onClick={() => setActiveDate(dateObj.id)}
                 className={`flex-shrink-0 flex flex-col items-center justify-center w-16 h-16 rounded-2xl border transition-all ${activeDate === dateObj.id ? 'bg-lime-400 border-lime-400 text-black shadow-[0_0_15px_rgba(57,255,20,0.2)]' : 'bg-zinc-900/50 border-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
-               >
+                >
                 <span className="text-[10px] font-black uppercase tracking-widest">{dateObj.dayOfWeek}</span>
                 <span className="text-xl font-black leading-none mt-1">{dateObj.dayOfMonth}</span>
               </button>
@@ -517,22 +543,60 @@ function HomeContent() {
               ))}
             </div>
           ) : filteredEvents.length === 0 && !isStreaming ? (
-            <div className="text-center py-24 bg-zinc-900/30 rounded-3xl border border-dashed border-zinc-800 flex flex-col items-center justify-center">
-              <Ticket className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
-              <h3 className="text-xl font-black text-white uppercase mb-2">No Matches Found</h3>
-              <p className="text-zinc-500 font-medium text-sm">Try adjusting your dates or searching a different keyword.</p>
+            <div className="flex flex-col items-center justify-center py-32 text-center">
+              {/* Icon */}
+              <div className="w-20 h-20 rounded-3xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-6">
+                <Search className="w-8 h-8 text-zinc-600" />
+              </div>
+
+              {/* Headline */}
+              <h3 className="text-2xl font-black text-white uppercase tracking-tight mb-2">
+                No Events Found
+              </h3>
+
+              {/* Context-aware message */}
+              <p className="text-zinc-500 font-medium max-w-sm leading-relaxed mb-6">
+                {activeKeyword
+                  ? <>No results for <span className="text-white font-bold">"{activeKeyword}"</span>. Try a different artist, event, or city.</>
+                  : activeCategory !== 'All'
+                  ? <>No <span className="text-white font-bold">{activeCategory}</span> events available right now. Try another category or search.</>
+                  : cityParam
+                  ? <>No events found in <span className="text-white font-bold">{cityParam}</span>. Try a nearby city or browse all events.</>
+                  : <>No events available yet. Check back soon — new listings are added daily.</>
+                }
+              </p>
+
+              {/* Correction notice */}
+              {searchMeta?.correctedKeyword && (
+                <p className="text-xs text-zinc-600 font-bold uppercase tracking-widest mb-6">
+                  Searched for: <span className="text-lime-400">{searchMeta.correctedKeyword}</span>
+                  {' '}(auto-corrected from "{activeKeyword}")
+                </p>
+              )}
+
+              {/* CTA */}
+              <button
+                onClick={() => {
+                  setSearchInput('');
+                  setActiveKeyword('');
+                  setActiveCategory('All');
+                }}
+                className="bg-lime-400 text-black px-6 py-3 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-lime-300 transition"
+              >
+                Browse All Events
+              </button>
             </div>
           ) : (
             <>
               <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 <AnimatePresence mode="popLayout">
                   {filteredEvents.slice(0, visibleLimit).map((event, index) => {
-                    const availableTickets = event.listings?.length || 0;
+                     const availableTickets = event.listings?.length || 0;
                     const lowestPrice = availableTickets > 0 ? Math.min(...event.listings.map(l => l.price)) : 0;
 
                     return (
                       <motion.div
-                        layout initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3 }}
+                         layout initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3 }}
                         key={`${event.id}-${index}`} 
                         className="group bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden hover:border-lime-500/50 transition-all flex flex-col cursor-pointer shadow-xl"
                       >
@@ -540,21 +604,21 @@ function HomeContent() {
                           <img src={event.imageUrl || ''} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 group-hover:opacity-80 transition-all duration-700 ease-in-out opacity-90 grayscale-[20%]" />
                           <div className="absolute top-4 right-4 bg-zinc-950/90 backdrop-blur-md px-3 py-2 rounded-xl text-center border border-zinc-800">
                             <div className="text-[10px] font-black text-lime-400 uppercase tracking-widest">{new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}</div>
-                            <div className="text-xl font-black leading-none text-white">{new Date(event.date).toLocaleDateString('en-US', { day: 'numeric' })}</div>
+                             <div className="text-xl font-black leading-none text-white">{new Date(event.date).toLocaleDateString('en-US', { day: 'numeric' })}</div>
                           </div>
                         </div>
 
                         <div className="p-6 flex flex-col flex-1">
                           <h3 className="font-black text-xl text-white mb-2 line-clamp-2 leading-tight group-hover:text-lime-400 transition-colors uppercase tracking-tight">{event.title}</h3>
                           <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold uppercase tracking-widest mb-6">
-                            <MapPin className="w-3.5 h-3.5 text-lime-500/50" /> {event.city}
+                           <MapPin className="w-3.5 h-3.5 text-lime-500/50" /> {event.city}
                           </div>
                           
                           <div className="mt-auto pt-4 border-t border-zinc-800/50 flex items-end justify-between">
-                            <div>
+                             <div>
                               <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Starting at</p>
                               <p className="font-black text-2xl text-white tracking-tighter">{formatPrice(lowestPrice)}</p>
-                            </div>
+                           </div>
                             <Link href={`/event/${event.id}`} className={`px-5 py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all ${availableTickets > 0 ? 'bg-white text-black hover:bg-lime-400 shadow-[0_0_15px_rgba(57,255,20,0.2)]' : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}>
                               {availableTickets > 0 ? `Get Tickets` : 'Sold Out'}
                             </Link>
@@ -577,7 +641,7 @@ function HomeContent() {
                     <ChevronLeft className="w-4 h-4" /> Prev
                   </button>
                   <span className="text-xs font-black uppercase tracking-widest text-zinc-500">
-                    Page <span className="text-lime-400">{currentPage}</span>
+                     Page <span className="text-lime-400">{currentPage}</span>
                   </span>
                   <button
                     onClick={() => setCurrentPage(prev => prev + 1)}
@@ -637,7 +701,7 @@ function HomeContent() {
                   <Percent className="w-6 h-6" />
                 </div>
                 <h3 className="text-2xl font-black text-white uppercase tracking-tight mb-5">Secure Escrow</h3>
-                <div className="bg-black/60 rounded-xl p-4 mb-5 border border-zinc-800 font-mono text-xs flex justify-between items-center text-zinc-400">
+                 <div className="bg-black/60 rounded-xl p-4 mb-5 border border-zinc-800 font-mono text-xs flex justify-between items-center text-zinc-400">
                   <span>GLOBAL VAT RATE (%)</span>
                   <span className="text-lime-400 font-black text-lg">12.4</span>
                 </div>
@@ -709,7 +773,7 @@ function HomeContent() {
               <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 relative overflow-hidden group hover:border-lime-500/50 transition-colors">
                 <div className="absolute top-0 right-0 p-6 text-6xl font-black text-zinc-800 opacity-30 pointer-events-none transition-transform group-hover:scale-110 duration-500">{step.num}</div>
                 <div className="w-12 h-12 bg-lime-400/10 rounded-2xl flex items-center justify-center mb-6 border border-lime-400/20 text-lime-400 relative z-10">
-                  <step.icon className="w-6 h-6" />
+                 <step.icon className="w-6 h-6" />
                 </div>
                 <h4 className="text-xl font-black text-white uppercase tracking-tight mb-3 relative z-10">{step.title}</h4>
                 <p className="text-sm font-medium text-zinc-400 leading-relaxed relative z-10">{step.desc}</p>
@@ -739,14 +803,14 @@ function HomeContent() {
             <div className="relative h-80 flex items-center justify-center perspective-[1000px]">
               <motion.div animate={{ rotateY: rotation }} transition={{ duration: 1.2, ease: "backInOut" }} className="relative w-48 h-64 preserve-3d" style={{ transformStyle: 'preserve-3d' }}>
                 {[0, 90, 180, 270].map((deg, index) => (
-                  <div key={deg} className="absolute inset-0 bg-zinc-950 border border-zinc-800 rounded-3xl p-6 flex flex-col items-center justify-center text-center shadow-2xl backface-hidden" style={{ transform: `rotateY(${deg}deg) translateZ(140px)`, WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}>
+                   <div key={deg} className="absolute inset-0 bg-zinc-950 border border-zinc-800 rounded-3xl p-6 flex flex-col items-center justify-center text-center shadow-2xl backface-hidden" style={{ transform: `rotateY(${deg}deg) translateZ(140px)`, WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}>
                     {index === 0 && <><ShieldCheck className="w-12 h-12 text-lime-400 mb-4"/><p className="font-black text-white uppercase tracking-widest text-sm">Verified</p></>}
                     {index === 1 && <><Zap className="w-12 h-12 text-lime-400 mb-4"/><p className="font-black text-white uppercase tracking-widest text-sm">Instant</p></>}
                     {index === 2 && <><Tag className="w-12 h-12 text-lime-400 mb-4"/><p className="font-black text-white uppercase tracking-widest text-sm">Secured</p></>}
                     {index === 3 && <><MapPin className="w-12 h-12 text-lime-400 mb-4"/><p className="font-black text-white uppercase tracking-widest text-sm">Local</p></>}
                   </div>
                 ))}
-              </motion.div>
+               </motion.div>
             </div>
           </div>
         </div>
@@ -762,4 +826,4 @@ export default function Home() {
       <HomeContent />
     </Suspense>
   );
-      }
+}
