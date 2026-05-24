@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 // ─── SYNC COOLDOWN ────────────────────────────────────────────────────────────
 const syncCooldown = new Map<string, number>();
-const SYNC_TTL_MS  = 20 * 60 * 1000; // 20 min per unique query
+const SYNC_TTL_MS  = 60 * 60 * 1000; // 60 min per unique query (artist sweeps are expensive)
 
 function isSyncCoolingDown(key: string) {
   const last = syncCooldown.get(key);
@@ -477,15 +477,69 @@ async function syncExternalEvents(
     const locStr = locParts.length ? '&' + locParts.join('&') : '';
 
     if (keyword) {
-      // Resolve keyword to TM-specific params (handles abbreviations, genres, etc.)
+      // ── Artist / keyword: GLOBAL multi-pass sweep ────────────────────────────
+      // We intentionally drop the location filter here so that an artist search
+      // like "Ariana Grande" returns every tour date worldwide, not just one city.
+      // Location filtering is applied later on the DB query level if needed.
+
       const tmParams = resolveKeywordToTmParams(keyword);
       const paramStr = Object.entries(tmParams)
         .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
         .join('&');
-      // Pass 1: keyword + location, sorted by date
-      passes.push(`${BASE}&${paramStr}${locStr}&size=100&sort=date,asc`);
-      // Pass 2: keyword + location, sorted by relevance (catches more artist names)
-      passes.push(`${BASE}&${paramStr}${locStr}&size=100&sort=relevance,desc`);
+
+      // ── Step 1: Resolve artist → TM attractionId for exhaustive coverage ────
+      // Using attractionId guarantees we get EVERY event TM has for this artist,
+      // not just events that happen to match the keyword string.
+      let attractionId: string | null = null;
+      try {
+        const attrUrl = `https://app.ticketmaster.com/discovery/v2/attractions.json`
+                      + `?apikey=${apiKey}&keyword=${encodeURIComponent(keyword)}&size=1`;
+        const attrRes  = await fetch(attrUrl, { signal: AbortSignal.timeout(5000) });
+        if (attrRes.ok) {
+          const attrData = await attrRes.json();
+          attractionId   = attrData._embedded?.attractions?.[0]?.id ?? null;
+        }
+      } catch { /* non-fatal */ }
+
+      if (attractionId) {
+        // Attraction-scoped: every event, every city, paginated
+        passes.push(`${BASE}&attractionId=${attractionId}&size=200&sort=date,asc&page=0`);
+        passes.push(`${BASE}&attractionId=${attractionId}&size=200&sort=date,asc&page=1`);
+        passes.push(`${BASE}&attractionId=${attractionId}&size=200&sort=date,asc&page=2`);
+      }
+
+      // ── Step 2: Broad keyword passes (global, no location) ──────────────────
+      passes.push(`${BASE}&${paramStr}&size=200&sort=date,asc&page=0`);
+      passes.push(`${BASE}&${paramStr}&size=200&sort=date,asc&page=1`);
+      passes.push(`${BASE}&${paramStr}&size=200&sort=relevance,desc`);
+
+      // ── Step 3: Companion event types ──────────────────────────────────────
+      // Meet & greets, VIP packages, signings and fan events often live under
+      // slightly different keyword strings in TM — sweep them all.
+      const variants = [
+        `${keyword} meet greet`,
+        `${keyword} meet and greet`,
+        `${keyword} VIP`,
+        `${keyword} VIP package`,
+        `${keyword} signing`,
+        `${keyword} fan meet`,
+        `${keyword} tour`,
+        `${keyword} world tour`,
+        `${keyword} concert`,
+      ];
+      for (const v of variants) {
+        passes.push(`${BASE}&keyword=${encodeURIComponent(v)}&size=50&sort=date,asc`);
+      }
+
+      // ── Step 4: Location-scoped pass if caller supplied a city/country ──────
+      // This is additive — the global passes above already cover these, but a
+      // location pass surfaces results TM's global ranking might bury.
+      if (locStr) {
+        passes.push(`${BASE}&${paramStr}${locStr}&size=100&sort=date,asc`);
+        if (attractionId) {
+          passes.push(`${BASE}&attractionId=${attractionId}${locStr}&size=100&sort=date,asc`);
+        }
+      }
     } else if (category && category !== 'All') {
       const catParams = categoryToTmParams(category);
       const paramStr  = Object.entries(catParams)
