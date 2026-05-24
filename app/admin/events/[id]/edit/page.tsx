@@ -90,9 +90,18 @@ export default async function EditEventPage({
     );
   }
 
-  const eventDate     = new Date(event.date);
-  const formattedDate = eventDate.toISOString().slice(0, 10);
-  const formattedTime = eventDate.toTimeString().slice(0, 5);
+  // Guard against null / invalid dates in the DB — prevents runtime 500s
+  let formattedDate = '';
+  let formattedTime = '';
+  try {
+    const d = event.date ? new Date(event.date) : null;
+    if (d && !isNaN(d.getTime())) {
+      formattedDate = d.toISOString().slice(0, 10);
+      formattedTime = d.toTimeString().slice(0, 5);
+    }
+  } catch {
+    // leave blank — form fields will be empty but editable
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-300 font-sans pb-24 selection:bg-lime-500 selection:text-black">
@@ -294,4 +303,4 @@ export default async function EditEventPage({
       </main>
     </div>
   );
-}
+    }
