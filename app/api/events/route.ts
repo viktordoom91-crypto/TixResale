@@ -170,11 +170,11 @@ async function syncExternalEvents(
     const liveEvents = (data._embedded?.events ?? []) as any[];
 
     for (const extEvent of liveEvents) {
-      // ── 1. Skip only truly cancelled events (event isn't happening) ──
-      // offsale  = sold out on TM  → list as resale at sold price ✓
-      // postponed = date TBD       → list as resale at sold price ✓
-      // cancelled = event scrapped → nothing to sell, skip         ✗
-      const statusCode = extEvent.dates?.status?.code as string | undefined;
+      // ── 1. Status filter ──────────────────────────────────────────────
+      // offsale   = sold out on TM official channels → resale still valid ✓
+      // postponed = event date TBD                   → resale still valid ✓
+      // cancelled = event is not happening            → skip entirely     ✗
+      const statusCode = (extEvent.dates?.status?.code as string | undefined)?.toLowerCase();
       if (statusCode === 'cancelled') {
         continue;
       }
@@ -254,4 +254,4 @@ async function syncExternalEvents(
       error instanceof Error ? error.message : 'Timeout',
     );
   }
-    }
+}
