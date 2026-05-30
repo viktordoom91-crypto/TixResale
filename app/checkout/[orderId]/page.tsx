@@ -224,7 +224,7 @@ export default function CheckoutPage() {
   const venueParts = event.description?.split(' at ') || [];
   const venueName = venueParts.length > 1 ? venueParts[1] : event.city;
   const seatInfo = getSeatInfo(ticketBatch.id);
-  const EMAIL_URL = `mailto:SeatExchangeInfo@gmail.com?subject=${encodeURIComponent(`Escrow Verification: Order ID ${order.id}`)}&body=${encodeURIComponent(`Hi Salex Escrow,\n\nI am ready to make a manual transfer for Order ID: ${order.id}.\n\n`)}`;
+  const EMAIL_URL = `mailto:support.tixresale@gmail.com?subject=${encodeURIComponent(`Escrow Verification: Order ID ${order.id}`)}&body=${encodeURIComponent(`Hi Tix resale Escrow,\n\nI am ready to make a manual transfer for Order ID: ${order.id}.\n\n`)}`;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-300 font-sans pb-24 selection:bg-lime-500 selection:text-black">
