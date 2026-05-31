@@ -239,7 +239,7 @@ export default function CreateEventPage() {
               <Tag className="w-4 h-4" /> Base Price ($)
             </label>
             <input
-              required type="number" min="0" step="5"
+              required type="number" min="0" step="any"
               placeholder="e.g., 2500"
               className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none font-medium transition-all"
               value={formData.basePrice}
