@@ -42,6 +42,7 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const router       = useRouter();
 
+  // ── 🛠 FIXED: All parameters pull directly from the URL to ensure they stack correctly ──
   const cityParam     = searchParams.get('city')     || null;
   const keywordParam  = searchParams.get('keyword')  || null;
   const categoryParam = searchParams.get('category') || null;
@@ -59,25 +60,28 @@ function HomeContent() {
   const [activeDate, setActiveDate]   = useState<string>('Any');
   const [currentHero, setCurrentHero] = useState(0);
   const [rotation, setRotation]       = useState(0);
-  
-  // Start with a solid chunk of events instead of 6, and no timer
-  const [visibleLimit, setVisibleLimit] = useState(12); 
+  const [visibleLimit, setVisibleLimit] = useState(6);
 
   useEffect(() => {
     setSearchInput(keywordParam || '');
   }, [keywordParam]);
 
+  // ── 🛠 FIXED: Navigation routing now PRESERVES other search parameters instead of wiping them ──
   const goKeyword  = useCallback((kw: string) => {
-    const q = new URLSearchParams();
+    const q = new URLSearchParams(searchParams.toString());
     if (kw) q.set('keyword', kw);
-    router.push(`/?${q.toString()}`);
-  }, [router]);
+    else q.delete('keyword');
+    // We clear category on a new keyword search so you aren't trapped in an empty tab
+    q.delete('category'); 
+    router.push(`/?${q.toString()}`, { scroll: false });
+  }, [searchParams, router]);
 
   const goCategory = useCallback((cat: string) => {
-    const q = new URLSearchParams();
+    const q = new URLSearchParams(searchParams.toString());
     if (cat && cat !== 'All') q.set('category', cat);
-    router.push(`/?${q.toString()}`);
-  }, [router]);
+    else q.delete('category');
+    router.push(`/?${q.toString()}`, { scroll: false });
+  }, [searchParams, router]);
 
   const upcomingDates = useMemo(() => {
     const dates = [];
@@ -101,31 +105,22 @@ function HomeContent() {
       setData({ events: [], count: 0, location: { city: cityParam || 'Global' } });
 
       try {
-        const q = new URLSearchParams();
-        if (keywordParam)                         q.set('keyword',  keywordParam);
-        else if (cityParam)                       q.set('city',     cityParam);
-        if (categoryParam && categoryParam !== 'All') q.set('category', categoryParam);
+        // ── 🛠 FIXED: Rebuilt API URL logic so keyword, city, and category stack perfectly ──
+        let apiUrl = '/api/events?';
+        if (cityParam) apiUrl += `city=${encodeURIComponent(cityParam)}&`;
+        if (keywordParam) apiUrl += `keyword=${encodeURIComponent(keywordParam)}&`;
+        if (categoryParam && categoryParam !== 'All') apiUrl += `category=${encodeURIComponent(categoryParam)}&`;
 
-        const response = await fetch(`/api/events?${q.toString()}`);
+        const response = await fetch(apiUrl);
         const reader   = response.body?.getReader();
         const decoder  = new TextDecoder();
         if (!reader) return;
 
         let accumulatedEvents: Event[] = [];
-        let lastUpdateTime = Date.now(); // 🚀 Throttle timer
 
         while (true) {
           const { value, done } = await reader.read();
-          
-          if (done) {
-            // Final update to ensure no events are left behind
-            setData({
-              events: accumulatedEvents,
-              count:  accumulatedEvents.length,
-              location: { city: cityParam || 'Global' },
-            });
-            break;
-          }
+          if (done) break;
 
           const lines = decoder.decode(value, { stream: true }).split('\n').filter(l => l.trim());
           lines.forEach(line => {
@@ -136,19 +131,15 @@ function HomeContent() {
               if (!Array.isArray(newEvents) || newEvents.length === 0) return;
               
               accumulatedEvents = [...accumulatedEvents, ...newEvents];
+              setData({
+                events: accumulatedEvents,
+                count:  accumulatedEvents.length,
+                location: { city: cityParam || 'Global' },
+              });
+              
+              setLoading(false);
             } catch { }
           });
-
-          // 🚀 THROTTLE: Only update the React state every 300ms to stop shaking
-          if (Date.now() - lastUpdateTime > 300) {
-            setData({
-              events: accumulatedEvents,
-              count:  accumulatedEvents.length,
-              location: { city: cityParam || 'Global' },
-            });
-            setLoading(false);
-            lastUpdateTime = Date.now();
-          }
         }
       } catch (error) {
         console.error('Streaming error:', error);
@@ -157,13 +148,10 @@ function HomeContent() {
         setIsStreaming(false);
       }
     }
-    
-    // Reset limit when search changes
-    setVisibleLimit(12);
     fetchStreamedEvents();
   }, [keywordParam, cityParam, categoryParam]);
 
-  const currentCity = keywordParam ? `"${keywordParam}"` : (data?.location?.city || cityParam || 'Global');
+  const currentCity = cityParam || 'Global';
 
   const validEvents = useMemo(() => {
     if (!data?.events) return [];
@@ -218,6 +206,14 @@ function HomeContent() {
       return matchesDate; 
     });
   }, [validEvents, activeDate]);
+
+  useEffect(() => {
+    setVisibleLimit(6);
+    const interval = setInterval(() => {
+      setVisibleLimit((prev) => (prev >= filteredEvents.length ? prev : prev + 3));
+    }, 150);
+    return () => clearInterval(interval);
+  }, [filteredEvents]);
 
   useEffect(() => {
     if (heroEvents.length <= 1) {
@@ -498,7 +494,7 @@ function HomeContent() {
 
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3].map((n) => (
+              {[1, 2, 3, 4, 5, 6].map((n) => (
                 <div key={n} className="h-[380px] bg-zinc-900/40 border border-zinc-800/50 rounded-3xl animate-pulse" />
               ))}
             </div>
@@ -509,62 +505,50 @@ function HomeContent() {
               <p className="text-zinc-500 font-medium text-sm">Try adjusting your dates or searching a different keyword.</p>
             </div>
           ) : (
-            <>
-              {/* 🚀 FIXED: Removed layout prop from Grid to prevent parent shaking */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                <AnimatePresence mode="popLayout">
-                  {filteredEvents.slice(0, visibleLimit).map((event, index) => {
-                    const availableTickets = event.listings?.length || 0;
-                    const lowestPrice = availableTickets > 0 ? Math.min(...event.listings.map(l => l.price)) : 0;
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <AnimatePresence>
+                {filteredEvents.map((event, index) => {
+                  const availableTickets = event.listings?.length || 0;
+                  const lowestPrice = availableTickets > 0 ? Math.min(...event.listings.map(l => l.price)) : 0;
 
-                    return (
-                      <motion.div
-                        layout="position" initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.3 }}
-                        key={event.id} 
-                        className="group bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden hover:border-lime-500/50 transition-all flex flex-col cursor-pointer shadow-xl"
-                      >
-                        <div className="h-48 bg-zinc-950 overflow-hidden relative">
-                          <img src={event.imageUrl || ''} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 group-hover:opacity-80 transition-all duration-700 ease-in-out opacity-90 grayscale-[20%]" />
-                          <div className="absolute top-4 right-4 bg-zinc-950/90 backdrop-blur-md px-3 py-2 rounded-xl text-center border border-zinc-800">
-                            <div className="text-[10px] font-black text-lime-400 uppercase tracking-widest">{new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}</div>
-                            <div className="text-xl font-black leading-none text-white">{new Date(event.date).toLocaleDateString('en-US', { day: 'numeric' })}</div>
-                          </div>
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0, y: 15 }} 
+                      animate={{ opacity: 1, y: 0 }} 
+                      exit={{ opacity: 0 }} 
+                      transition={{ duration: 0.4, ease: "easeOut", delay: (index % 12) * 0.05 }}
+                      key={event.id} 
+                      className="group bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden hover:border-lime-500/50 transition-all flex flex-col cursor-pointer shadow-xl"
+                    >
+                      <div className="h-48 bg-zinc-950 overflow-hidden relative">
+                        <img loading="lazy" src={event.imageUrl || ''} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 group-hover:opacity-80 transition-all duration-700 ease-in-out opacity-90 grayscale-[20%]" />
+                        <div className="absolute top-4 right-4 bg-zinc-950/90 backdrop-blur-md px-3 py-2 rounded-xl text-center border border-zinc-800">
+                          <div className="text-[10px] font-black text-lime-400 uppercase tracking-widest">{new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}</div>
+                          <div className="text-xl font-black leading-none text-white">{new Date(event.date).toLocaleDateString('en-US', { day: 'numeric' })}</div>
                         </div>
+                      </div>
 
-                        <div className="p-6 flex flex-col flex-1">
-                          <h3 className="font-black text-xl text-white mb-2 line-clamp-2 leading-tight group-hover:text-lime-400 transition-colors uppercase tracking-tight">{event.title}</h3>
-                          <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold uppercase tracking-widest mb-6">
-                            <MapPin className="w-3.5 h-3.5 text-lime-500/50" /> {event.city}
-                          </div>
-                          
-                          <div className="mt-auto pt-4 border-t border-zinc-800/50 flex items-end justify-between">
-                            <div>
-                              <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Starting at</p>
-                              <p className="font-black text-2xl text-white tracking-tighter">{formatPrice(lowestPrice)}</p>
-                            </div>
-                            <Link href={`/event/${event.id}`} className={`px-5 py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all ${availableTickets > 0 ? 'bg-white text-black hover:bg-lime-400 shadow-[0_0_15px_rgba(57,255,20,0.2)]' : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}>
-                              {availableTickets > 0 ? `Get Tickets` : 'Sold Out'}
-                            </Link>
-                          </div>
+                      <div className="p-6 flex flex-col flex-1">
+                        <h3 className="font-black text-xl text-white mb-2 line-clamp-2 leading-tight group-hover:text-lime-400 transition-colors uppercase tracking-tight">{event.title}</h3>
+                        <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold uppercase tracking-widest mb-6">
+                          <MapPin className="w-3.5 h-3.5 text-lime-500/50" /> {event.city}
                         </div>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
-              </div>
-
-              {/* 🚀 FIXED: Added stable Load More button instead of timer-based loading */}
-              {visibleLimit < filteredEvents.length && (
-                <div className="mt-10 flex justify-center">
-                  <button 
-                    onClick={() => setVisibleLimit(prev => prev + 12)}
-                    className="px-8 py-3 rounded-full border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 text-white font-black text-sm uppercase tracking-widest transition-colors flex items-center gap-2"
-                  >
-                    Load More Events
-                  </button>
-                </div>
-              )}
-            </>
+                        
+                        <div className="mt-auto pt-4 border-t border-zinc-800/50 flex items-end justify-between">
+                          <div>
+                            <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Starting at</p>
+                            <p className="font-black text-2xl text-white tracking-tighter">{formatPrice(lowestPrice)}</p>
+                          </div>
+                          <Link href={`/event/${event.id}`} className={`px-5 py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all ${availableTickets > 0 ? 'bg-white text-black hover:bg-lime-400 shadow-[0_0_15px_rgba(57,255,20,0.2)]' : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}`}>
+                            {availableTickets > 0 ? `Get Tickets` : 'Sold Out'}
+                          </Link>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
           )}
         </div>
 
