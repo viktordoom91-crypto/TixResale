@@ -485,14 +485,13 @@ function HomeContent() {
                 <div key={n} className="h-[380px] bg-zinc-900/40 border border-zinc-800/50 rounded-3xl animate-pulse" />
               ))}
             </div>
-          ) : filteredEvents.length === 0 && !isStreaming ? (
+         ) : filteredEvents.length === 0 && !isStreaming ? (
             <div className="text-center py-24 bg-zinc-900/30 rounded-3xl border border-dashed border-zinc-800 flex flex-col items-center justify-center">
               <Ticket className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
               <h3 className="text-xl font-black text-white uppercase mb-2">No Matches Found</h3>
               <p className="text-zinc-500 font-medium text-sm">Try adjusting your dates or searching a different keyword.</p>
             </div>
           ) : (
-            {/* 🛠 FIXED: Removed 'layout' animations to completely kill the screen shaking */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               <AnimatePresence>
                 {/* 🛠 FIXED: Maps max 24 items natively to avoid heavy DOM stress */}
