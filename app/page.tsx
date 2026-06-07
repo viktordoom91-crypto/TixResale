@@ -7,10 +7,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldCheck, Zap, Tag, MapPin, Calendar, Music, Tent, Ticket, Trophy, Search, Loader2, Radar, CheckCircle2, TrendingUp, Star, Mail, SearchCheck, Mic, Percent, CreditCard } from 'lucide-react';
 
-// 🛠 Import the dynamic currency formatter
 import { useCurrency } from './components/CurrencyProvider';
 
-// --- TYPES ---
 type Listing = { id: string; price: number; quantity: number };
 type Event = {
   id: string;
@@ -42,7 +40,6 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const router       = useRouter();
 
-  // ── 🛠 FIXED: All parameters pull directly from the URL to ensure they stack correctly ──
   const cityParam     = searchParams.get('city')     || null;
   const keywordParam  = searchParams.get('keyword')  || null;
   const categoryParam = searchParams.get('category') || null;
@@ -60,18 +57,15 @@ function HomeContent() {
   const [activeDate, setActiveDate]   = useState<string>('Any');
   const [currentHero, setCurrentHero] = useState(0);
   const [rotation, setRotation]       = useState(0);
-  const [visibleLimit, setVisibleLimit] = useState(6);
 
   useEffect(() => {
     setSearchInput(keywordParam || '');
   }, [keywordParam]);
 
-  // ── 🛠 FIXED: Navigation routing now PRESERVES other search parameters instead of wiping them ──
   const goKeyword  = useCallback((kw: string) => {
     const q = new URLSearchParams(searchParams.toString());
     if (kw) q.set('keyword', kw);
     else q.delete('keyword');
-    // We clear category on a new keyword search so you aren't trapped in an empty tab
     q.delete('category'); 
     router.push(`/?${q.toString()}`, { scroll: false });
   }, [searchParams, router]);
@@ -105,7 +99,6 @@ function HomeContent() {
       setData({ events: [], count: 0, location: { city: cityParam || 'Global' } });
 
       try {
-        // ── 🛠 FIXED: Rebuilt API URL logic so keyword, city, and category stack perfectly ──
         let apiUrl = '/api/events?';
         if (cityParam) apiUrl += `city=${encodeURIComponent(cityParam)}&`;
         if (keywordParam) apiUrl += `keyword=${encodeURIComponent(keywordParam)}&`;
@@ -207,13 +200,7 @@ function HomeContent() {
     });
   }, [validEvents, activeDate]);
 
-  useEffect(() => {
-    setVisibleLimit(6);
-    const interval = setInterval(() => {
-      setVisibleLimit((prev) => (prev >= filteredEvents.length ? prev : prev + 3));
-    }, 150);
-    return () => clearInterval(interval);
-  }, [filteredEvents]);
+  // 🛠 FIXED: Removed the visibleLimit setInterval loop that was shaking the screen
 
   useEffect(() => {
     if (heroEvents.length <= 1) {
@@ -252,7 +239,7 @@ function HomeContent() {
                 <Radar className="w-16 h-16 text-lime-400 animate-spin relative z-10" style={{ animationDuration: '3s' }} />
               </div>
               <h1 className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter mb-2">Scanning {scanTarget}</h1>
-              <p className="text-zinc-400 font-medium">Syncing live Ticketmaster inventory. Refresh in a few seconds.</p>
+              <p className="text-zinc-400 font-medium">Syncing live Ticketmaster inventory...</p>
             </div>
           </div>
         ) : (
@@ -505,9 +492,11 @@ function HomeContent() {
               <p className="text-zinc-500 font-medium text-sm">Try adjusting your dates or searching a different keyword.</p>
             </div>
           ) : (
+            {/* 🛠 FIXED: Removed 'layout' animations to completely kill the screen shaking */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               <AnimatePresence>
-                {filteredEvents.map((event, index) => {
+                {/* 🛠 FIXED: Maps max 24 items natively to avoid heavy DOM stress */}
+                {filteredEvents.slice(0, 24).map((event, index) => {
                   const availableTickets = event.listings?.length || 0;
                   const lowestPrice = availableTickets > 0 ? Math.min(...event.listings.map(l => l.price)) : 0;
 
@@ -591,7 +580,6 @@ function HomeContent() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {/* Card 1: Secure Escrow */}
               <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-8 hover:border-lime-500/50 transition-all duration-300 group shadow-lg hover:shadow-[0_0_40px_rgba(57,255,20,0.15)]">
                 <div className="w-14 h-14 bg-lime-400/10 rounded-2xl flex items-center justify-center mb-8 border border-lime-400/20 text-lime-400 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(57,255,20,0.1)]">
                   <Percent className="w-6 h-6" />
@@ -606,7 +594,6 @@ function HomeContent() {
                 </p>
               </div>
 
-              {/* Card 2: Instant Payouts */}
               <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-8 hover:border-lime-500/50 transition-all duration-300 group shadow-lg hover:shadow-[0_0_40px_rgba(57,255,20,0.15)]">
                 <div className="w-14 h-14 bg-lime-400/10 rounded-2xl flex items-center justify-center mb-8 border border-lime-400/20 text-lime-400 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(57,255,20,0.1)]">
                   <Zap className="w-6 h-6" />
@@ -621,7 +608,6 @@ function HomeContent() {
                 </p>
               </div>
 
-              {/* Card 3: Verified Tickets */}
               <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-8 hover:border-lime-500/50 transition-all duration-300 group shadow-lg hover:shadow-[0_0_40px_rgba(57,255,20,0.15)]">
                 <div className="w-14 h-14 bg-lime-400/10 rounded-2xl flex items-center justify-center mb-8 border border-lime-400/20 text-lime-400 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(57,255,20,0.1)]">
                   <ShieldCheck className="w-6 h-6" />
@@ -639,7 +625,7 @@ function HomeContent() {
           </div>
         </div>
 
-        {/* 🚀 WALL OF TEXT MARQUEE (Separated Section) */}
+        {/* 🚀 WALL OF TEXT MARQUEE */}
         <div className="relative border border-zinc-800 bg-black overflow-hidden mt-8 rounded-[3rem] shadow-2xl py-12">
           <div className="flex flex-col justify-center pointer-events-none select-none overflow-hidden bg-black">
             {[...Array(6)].map((_, i) => (
