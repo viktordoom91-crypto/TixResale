@@ -11,32 +11,33 @@ export async function GET(request: Request) {
   const requestedKeyword = searchParams.get('keyword');
   const requestedCategory = searchParams.get('category');
 
-  const city = requestedCity || request.headers.get('x-vercel-ip-city') || 'Global';
+  const userIpCity = request.headers.get('x-vercel-ip-city') || 'Global';
+  const targetCity = requestedCity || userIpCity;
 
-  // 🛠 THE FIX: We AWAIT the Ticketmaster sync before querying the database.
-  // This guarantees that any new events queried by the user are permanently SAVED to the DB 
-  // before the stream starts, granting instant results without requiring a manual refresh.
-  await syncExternalEvents(city, requestedKeyword, requestedCategory).catch(console.error);
+  // 1. SYNC & SAVE: We AWAIT the Ticketmaster sync before querying the database.
+  // This passes the exact search params to the external API and saves the results permanently.
+  await syncExternalEvents(targetCity, requestedKeyword, requestedCategory).catch(console.error);
 
+  // 2. STRICT DATABASE QUERY: Ensure the DB only returns the specific searched items.
   let andConditions: any[] = [];
 
-  // 1. Keyword search (Artist/Venue) globally
+  // Keyword Filter
   if (requestedKeyword) {
     andConditions.push({
       OR: [
         { title: { contains: requestedKeyword, mode: 'insensitive' } },
         { description: { contains: requestedKeyword, mode: 'insensitive' } },
-        { city: { contains: requestedKeyword, mode: 'insensitive' } } 
+        { city: { contains: requestedKeyword, mode: 'insensitive' } },
+        { country: { contains: requestedKeyword, mode: 'insensitive' } } // Allows Admin events to match keywords
       ]
     });
-  } 
-  
-  // 2. Category search globally
+  }
+
+  // Category Filter
   if (requestedCategory && requestedCategory !== 'All') {
     let mappedCat = requestedCategory;
     if (requestedCategory === 'Concerts') mappedCat = 'Music';
     if (requestedCategory === 'Theater') mappedCat = 'Theatre'; 
-
     andConditions.push({
       OR: [
         { description: { contains: mappedCat, mode: 'insensitive' } },
@@ -45,24 +46,30 @@ export async function GET(request: Request) {
     });
   }
 
-  // 3. If NO keyword and NO category, show Local City OR Admin Events
-  if (!requestedKeyword && (!requestedCategory || requestedCategory === 'All')) {
+  // Location Filter (Only applied if the user explicitly clicked a city)
+  if (requestedCity && requestedCity !== 'Global') {
+    andConditions.push({ city: { contains: requestedCity, mode: 'insensitive' } });
+  }
+
+  // DEFAULT VIEW: If NO search params are applied, show Local City + Admin Events
+  if (!requestedKeyword && (!requestedCategory || requestedCategory === 'All') && (!requestedCity || requestedCity === 'Global')) {
     andConditions.push({
       OR: [
-        { city: { equals: city, mode: 'insensitive' } },
+        { city: { equals: userIpCity, mode: 'insensitive' } },
         { country: 'Manual Entry' }, // 🛠 ALWAYS show events added by Admin
-        { isFeatured: true }         // 🛠 ALWAYS show featured events
+        { isFeatured: true }
       ]
     });
   }
 
-  // 4. Auto-Expire: Only show events whose date is today or in the future
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  andConditions.push({ date: { gte: yesterday } });
+  // 3. AUTO-EXPIRATION: Only show events whose date is today or in the future
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  andConditions.push({ date: { gte: today } });
 
   const dbQuery = andConditions.length > 0 ? { AND: andConditions } : {};
 
+  // 4. STREAM RESULTS: Pushes data to the frontend rapidly
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -82,7 +89,7 @@ export async function GET(request: Request) {
               },
             },
             orderBy: [
-              { isFeatured: 'desc' }, // Admin/Featured events float to the top
+              { isFeatured: 'desc' }, // 🛠 Admin/Featured events float to the top
               { date: 'asc' }
             ],
             take: batchSize,
@@ -127,18 +134,23 @@ async function syncExternalEvents(targetCity: string, keyword: string | null, ca
     if (!apiKey) return;
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 sec max timeout so we don't stall the UI forever
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     let tmUrl = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${apiKey}&size=20&sort=date,asc`;
     
+    // 🛠 Stack the API query parameters perfectly
     if (keyword) {
       tmUrl += `&keyword=${encodeURIComponent(keyword)}`;
-    } else if (category && category !== 'All') {
+    }
+    
+    if (category && category !== 'All') {
       let tmCat = category;
       if (category === 'Concerts') tmCat = 'Music';
       if (category === 'Theater') tmCat = 'Arts & Theatre';
       tmUrl += `&classificationName=${encodeURIComponent(tmCat)}`;
-    } else {
+    }
+    
+    if (targetCity && targetCity !== 'Global') {
       tmUrl += `&city=${encodeURIComponent(targetCity)}`;
     }
 
@@ -154,20 +166,20 @@ async function syncExternalEvents(targetCity: string, keyword: string | null, ca
     for (const extEvent of liveEvents) {
       const title = extEvent.name?.substring(0, 250) || "Live Event";
       const catName = extEvent.classifications?.[0]?.segment?.name || "Live Event";
-      const actualCity = extEvent._embedded?.venues?.[0]?.city?.name || targetCity;
+      const actualCity = extEvent._embedded?.venues?.[0]?.city?.name || targetCity || "Global";
       const venueName = extEvent._embedded?.venues?.[0]?.name || 'TBA';
       const description = `${catName} at ${venueName}`;
       const eventDateString = extEvent.dates?.start?.dateTime || extEvent.dates?.start?.localDate;
       const date = eventDateString ? new Date(eventDateString) : new Date(Date.now() + 86400000 * 7);
       const imageUrl = extEvent.images?.[0]?.url || "https://images.unsplash.com/photo-1540575861501-7cf05a4b125a?q=80&w=1000";
       
-      // 🛠 FIXED: Exact Ticketmaster retail price mapping
       const basePrice = extEvent.priceRanges?.[0]?.min ? Number(extEvent.priceRanges[0].min.toFixed(2)) : 50.00; 
 
       const existingEvent = await prisma.event.findFirst({
         where: { title, city: actualCity }
       });
 
+      // 🛠 PERMANENT SAVE: Creates events in DB to live until expiration
       if (!existingEvent) {
         const newEvent = await prisma.event.create({
           data: { title, description, date, city: actualCity, country: 'GLOBAL', basePrice, imageUrl, isFeatured: false }
